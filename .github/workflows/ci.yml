@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,3 +27,28 @@ jobs:
         run: nix profile add nixpkgs#devenv
       - name: Run prek quality gates in devenv
         run: devenv shell -- prek run --all-files
+      - name: Build documentation for Pages
+        if: github.event_name != 'pull_request'
+        run: devenv shell -- just docs-check
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v5
