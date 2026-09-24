@@ -1,0 +1,134 @@
+# Hooks run by prek. System hooks resolve exclusively from the pinned devenv shell.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: detect-private-key
+        stages: [pre-commit, pre-push]
+      - id: check-added-large-files
+        stages: [pre-commit, pre-push]
+      - id: check-case-conflict
+      - id: fix-byte-order-marker
+      - id: destroyed-symlinks
+      - id: check-merge-conflict
+      - id: check-vcs-permalinks
+  - repo: local
+    hooks:
+      - id: nix-check
+        name: Nix format and static analysis
+        entry: bash -euc 'nixfmt --check devenv.nix && statix check devenv.nix && deadnix --fail devenv.nix'
+        language: system
+        files: ^devenv\.nix$
+        pass_filenames: false
+      - id: tombi-format
+        name: tombi (TOML format)
+        entry: tombi format --offline
+        language: system
+        types_or: [toml]
+        exclude: (^|/)[^/]*\.lock$
+      - id: tombi-lint
+        name: tombi (TOML lint)
+        entry: tombi lint --offline
+        language: system
+        types_or: [toml]
+        exclude: (^|/)[^/]*\.lock$
+      - id: rumdl-fmt
+        name: rumdl (Markdown format)
+        entry: rumdl fmt
+        language: system
+        files: \.md$
+      - id: rumdl
+        name: rumdl (Markdown lint)
+        entry: rumdl check
+        language: system
+        files: \.md$
+      - id: schematter-changelog
+        name: Schematter changelog contract
+        entry: schematter validate --schema schemas/changelog.document-schema.yaml
+        language: system
+        files: ^CHANGELOG\.md$
+      - id: codespell
+        name: codespell
+        entry: codespell
+        language: system
+        exclude: ^uv\.lock$
+      - id: just-fmt
+        name: just (format)
+        entry: just --fmt --check --unstable
+        language: system
+        files: (^|/)justfile$
+        pass_filenames: false
+      - id: just-lsp
+        name: just-lsp (lint)
+        entry: just-lsp analyze justfile
+        language: system
+        files: ^justfile$
+        pass_filenames: false
+      - id: uv-lock
+        name: uv lockfile current
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: ruff-format
+        name: Ruff format
+        entry: uv run --locked ruff format --check .
+        language: system
+        files: \.py$
+        pass_filenames: false
+      - id: ruff-check
+        name: Ruff lint
+        entry: uv run --locked ruff check .
+        language: system
+        files: \.py$
+        pass_filenames: false
+      - id: pyrefly
+        name: Pyrefly strict type checking
+        entry: uv run --locked pyrefly check src tests
+        language: system
+        files: ^(src|tests)/.*\.py$|^pyproject\.toml$|^uv\.lock$
+        pass_filenames: false
+      - id: deptry
+        name: Python dependency hygiene
+        entry: uv run --locked deptry .
+        language: system
+        files: ^(src|tests)/.*\.py$|^pyproject\.toml$|^uv\.lock$
+        pass_filenames: false
+      - id: pytest
+        name: Python tests
+        entry: just test
+        language: system
+        files: ^(src|tests)/.*\.py$|^pyproject\.toml$|^uv\.lock$
+        pass_filenames: false
+      - id: docs-build
+        name: Documentation build and links
+        entry: just docs-check
+        language: system
+        files: ^(docs/|examples/quickstart/|mkdocs\.yml$|src/|pyproject\.toml$|uv\.lock$)
+        pass_filenames: false
+      - id: quickstart
+        name: Runnable quickstart
+        entry: just examples-check
+        language: system
+        files: ^(examples/quickstart/|scripts/check-quickstart\.sh$|src/|pyproject\.toml$|uv\.lock$)
+        pass_filenames: false
+      - id: prek-validate-config
+        name: prek configuration
+        entry: prek validate-config
+        language: system
+        files: ^\.pre-commit-config\.yaml$
+        pass_filenames: false
+      - id: convco
+        name: Conventional commit message
+        entry: bash -euc 'exec convco check --from-stdin < "$1"' --
+        language: system
+        stages: [commit-msg]

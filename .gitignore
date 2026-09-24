@@ -1,0 +1,10 @@
+.devenv/
+.direnv/
+.pytest_cache/
+.ruff_cache/
+.testmondata*
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+site/

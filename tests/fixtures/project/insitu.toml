@@ -1,0 +1,14 @@
+version = 1
+
+[sources]
+include = ["**/*.md"]
+exclude = [".insitu/**"]
+
+[paths]
+models = "insitu/models"
+templates = "insitu/templates"
+state = ".insitu/index.db"
+
+[watch]
+debounce_ms = 10
+step_ms = 2

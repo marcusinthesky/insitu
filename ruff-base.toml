@@ -1,0 +1,52 @@
+required-version = ">=0.16.0,<0.17"
+target-version = "py313"
+line-length = 88
+src = ["src", "tests"]
+force-exclude = true
+unsafe-fixes = false
+show-fixes = true
+
+[lint]
+select = ["ALL"]
+extend-select = ["PLW0717", "PLW1514", "RUF067", "RUF069"]
+preview = true
+explicit-preview-rules = true
+fixable = ["ALL"]
+ignore = [
+  "COM812",
+  "COM819",
+  "CPY001",
+  "D203",
+  "D206",
+  "D213",
+  "D107",
+  "D300",
+  "DOC201",
+  "DOC402",
+  "E111",
+  "E114",
+  "E117",
+  "EM101",
+  "EM102",
+  "ISC001",
+  "ISC002",
+  "PLR0913",
+  "PLR0917",
+  "Q000",
+  "Q001",
+  "Q002",
+  "Q003",
+  "TC001",
+  "TC002",
+  "TC003",
+  "TRY003",
+  "W191",
+]
+
+[lint.flake8-type-checking]
+strict = true
+quote-annotations = true
+runtime-evaluated-decorators = ["typer.Typer.callback", "typer.Typer.command"]
+
+[format]
+docstring-code-format = true

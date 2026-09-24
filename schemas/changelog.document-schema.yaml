@@ -1,0 +1,44 @@
+$schema: https://document-schema.org/draft/2026-06/schema
+description: Per-PR Keep a Changelog entries with a closed category vocabulary.
+maxDepth: 3
+maxTokens: 15000
+sections:
+  - header:
+      const: CHANGELOG
+    additionalBlocks: false
+    sections:
+      - header:
+          pattern: '^PR #[1-9]\d*: .{1,100}$'
+        minContains: 1
+        maxContains: 1000
+        additionalBlocks: false
+        sections:
+          - header:
+              enum: [Added, Changed, Deprecated, Removed, Fixed, Security]
+            minContains: 1
+            maxContains: 6
+            blocks:
+              - type: bullet-list
+                minItems: 1
+                maxItems: 15
+            additionalBlocks: false
+            additionalSections: false
+        additionalSections: false
+    additionalSections: false
+additionalBlocks: false
+additionalSections: false
+frontmatter:
+  $id: https://insitu.dev/schemas/changelog-frontmatter/schema.json
+  $schema: https://json-schema.org/draft/2020-12/schema
+  additionalProperties: false
+  properties:
+    description:
+      maxLength: 200
+      minLength: 1
+      pattern: ^[^\r\n]+$
+      type: string
+    type:
+      const: changelog
+  required: [type, description]
+  title: Changelog Frontmatter
+  type: object
