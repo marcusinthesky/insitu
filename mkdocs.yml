@@ -1,4 +1,5 @@
 site_name: Insitu
+site_url: https://marcusinthesky.github.io/insitu/
 site_description: Reactive materializations for repository documents
 docs_dir: docs
 site_dir: site
@@ -20,6 +21,7 @@ plugins:
             show_root_full_path: false
             show_signature_annotations: true
             merge_init_into_class: true
+            show_source: false
 validation:
   invalid_links: true
   invalid_link_anchors: true
