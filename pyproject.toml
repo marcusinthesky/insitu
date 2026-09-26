@@ -15,7 +15,7 @@ dependencies = [
   "pydantic>=2.13.4",
   "pygit2>=1.20.0,<2",
   "rich>=14.0.0",
-  "ruamel-yaml>=0.18.17",
+  "ruamel-yaml>=0.19.1",
   "typer>=0.24.0",
   "watchfiles>=1.2.0",
 ]
