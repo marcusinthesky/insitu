@@ -1,7 +1,0 @@
-| Task | Status |
-| --- | --- |
-{% for row in rows -%}
-| [{{ row.title }}]({{ row.path | relative_to(this.directory) }}) | {{ row.status }} |
-{% else -%}
-| _None_ | |
-{% endfor %}

@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import os
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,51 @@ class _Registration:
     handler: Callable
     value: TypeAdapter | None = None
 
+    def schema(self) -> dict[str, JsonValue]:
+        schema = {
+            "params": self.params.json_schema(),
+            "result": self.result.json_schema(),
+        }
+        if self.value is not None:
+            schema["value"] = self.value.json_schema()
+        return schema
+
+
+_METHODS = {
+    "insitu.transform": CapabilityKind.TRANSFORM,
+    "insitu.resource": CapabilityKind.RESOURCE,
+    "insitu.render": CapabilityKind.RENDERER,
+    "insitu.validate": CapabilityKind.VALIDATOR,
+}
+
+
+def _stdin_reader(loop: asyncio.AbstractEventLoop) -> asyncio.StreamReader:
+    # connect_read_pipe is not supported by Windows' default Proactor loop.
+    # A daemon blocking reader bridges stdin on every supported platform.
+    reader = asyncio.StreamReader(limit=8192)
+
+    def pump() -> None:
+        try:
+            while data := os.read(sys.stdin.fileno(), 65536):
+                loop.call_soon_threadsafe(reader.feed_data, data)
+            loop.call_soon_threadsafe(reader.feed_eof)
+        except (RuntimeError, OSError):
+            try:
+                loop.call_soon_threadsafe(reader.feed_eof)
+            except RuntimeError:
+                pass
+
+    threading.Thread(target=pump, name="insitu-stdin", daemon=True).start()
+    return reader
+
+
+async def _write_stdout(data: bytes) -> None:
+    def emit() -> None:
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+
+    await asyncio.to_thread(emit)
+
 
 class Extension:
     """Register typed capabilities, then serve them over stdin/stdout."""
@@ -98,73 +144,20 @@ class Extension:
         asyncio.run(self.serve())
 
     async def serve(self) -> None:
-        # connect_read_pipe is not supported by Windows' default Proactor loop.
-        # A daemon blocking reader bridges stdin on every supported platform.
-        import threading
-
-        loop = asyncio.get_running_loop()
-        reader = asyncio.StreamReader(limit=8192)
-
-        def pump() -> None:
-            try:
-                while data := os.read(sys.stdin.fileno(), 65536):
-                    loop.call_soon_threadsafe(reader.feed_data, data)
-                loop.call_soon_threadsafe(reader.feed_eof)
-            except (RuntimeError, OSError):
-                try:
-                    loop.call_soon_threadsafe(reader.feed_eof)
-                except RuntimeError:
-                    pass
-
-        thread = threading.Thread(target=pump, name="insitu-stdin", daemon=True)
-        thread.start()
+        reader = _stdin_reader(asyncio.get_running_loop())
 
         async def read() -> bytes:
             return await read_stream_message(reader)
 
-        async def write(data: bytes) -> None:
-            def emit() -> None:
-                sys.stdout.buffer.write(data)
-                sys.stdout.buffer.flush()
-
-            await asyncio.to_thread(emit)
-
-        peer = JsonRpcPeer(read, write)
+        peer = JsonRpcPeer(read, _write_stdout)
         stop = asyncio.Event()
-
-        async def initialize(raw: JsonValue | None) -> JsonValue:
-            request = InitializeRequest.model_validate(raw)
-            self._root = Path(request.root).resolve()
-            capabilities = {
-                kind.value: {
-                    name: {
-                        "params": entry.params.json_schema(),
-                        "result": entry.result.json_schema(),
-                        **(
-                            {"value": entry.value.json_schema()}
-                            if entry.value is not None
-                            else {}
-                        ),
-                    }
-                    for name, entry in entries.items()
-                }
-                for kind, entries in self._capabilities.items()
-            }
-            return InitializeResult(
-                name=self.name, version=self.version, capabilities=capabilities
-            ).model_dump(mode="json")
 
         async def shutdown(_raw: JsonValue | None) -> None:
             return None
 
-        peer.handle("insitu.initialize", initialize)
+        peer.handle("insitu.initialize", self._initialize)
         peer.handle("insitu.shutdown", shutdown, after_response=stop.set)
-        for method, kind in {
-            "insitu.transform": CapabilityKind.TRANSFORM,
-            "insitu.resource": CapabilityKind.RESOURCE,
-            "insitu.render": CapabilityKind.RENDERER,
-            "insitu.validate": CapabilityKind.VALIDATOR,
-        }.items():
+        for method, kind in _METHODS.items():
             peer.handle(method, lambda raw, kind=kind: self._invoke(peer, kind, raw))
         await peer.start()
         closed = asyncio.create_task(peer.wait_closed())
@@ -180,6 +173,17 @@ class Extension:
                 task.result()
         finally:
             await peer.close()
+
+    async def _initialize(self, raw: JsonValue | None) -> JsonValue:
+        request = InitializeRequest.model_validate(raw)
+        self._root = Path(request.root).resolve()
+        capabilities = {
+            kind.value: {name: entry.schema() for name, entry in entries.items()}
+            for kind, entries in self._capabilities.items()
+        }
+        return InitializeResult(
+            name=self.name, version=self.version, capabilities=capabilities
+        ).model_dump(mode="json")
 
     def _register(
         self,

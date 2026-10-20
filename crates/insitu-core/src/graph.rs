@@ -6,10 +6,12 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) struct Graph {
     dependencies: BTreeMap<String, BTreeSet<String>>,
 }
+
 impl Graph {
     pub(crate) fn node(&mut self, node: impl Into<String>) {
         self.dependencies.entry(node.into()).or_default();
     }
+
     pub(crate) fn edge(&mut self, node: &str, dependency: &str) -> Result<()> {
         self.node(node);
         self.node(dependency);
@@ -22,6 +24,7 @@ impl Graph {
             .insert(dependency.into());
         Ok(())
     }
+
     fn path(&self, start: &str, target: &str) -> Option<Vec<String>> {
         let mut stack = vec![(start.to_owned(), vec![start.to_owned()])];
         let mut seen = BTreeSet::new();
@@ -42,6 +45,7 @@ impl Graph {
         }
         None
     }
+
     pub(crate) fn order(&self) -> Result<Vec<String>> {
         let mut remaining = self.dependencies.clone();
         let mut ordered = Vec::new();
@@ -71,6 +75,7 @@ impl Graph {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn deterministic_order_and_cycle() {
         let mut g = Graph::default();

@@ -1,7 +1,8 @@
 //! Small Python-compatible value conventions used at compatibility boundaries.
-use anyhow::{Result, bail};
+use anyhow::{Context, Result};
 use insitu_protocol::Options;
 use serde_json::Value;
+use std::fmt::Write;
 
 pub(crate) fn truthy(value: &Value) -> bool {
     match value {
@@ -13,6 +14,7 @@ pub(crate) fn truthy(value: &Value) -> bool {
         Value::Object(v) => !v.is_empty(),
     }
 }
+
 pub(crate) fn python_str(value: &Value) -> String {
     match value {
         Value::Null => "None".into(),
@@ -38,6 +40,7 @@ pub(crate) fn python_str(value: &Value) -> String {
         ),
     }
 }
+
 fn python_repr(value: &Value) -> String {
     if let Value::String(s) = value {
         let quote = if s.contains('\'') && !s.contains('"') {
@@ -66,6 +69,7 @@ fn python_repr(value: &Value) -> String {
         python_str(value)
     }
 }
+
 /// `json.dumps(..., sort_keys=True)`-style separators and ASCII escaping.
 pub(crate) fn python_json(value: &Value) -> String {
     fn quoted(value: &str) -> String {
@@ -77,7 +81,8 @@ pub(crate) fn python_json(value: &Value) -> String {
             } else {
                 let mut buf = [0; 2];
                 for unit in ch.encode_utf16(&mut buf).iter() {
-                    out.push_str(&format!("\\u{unit:04x}"));
+                    // Writing to a String cannot fail.
+                    let _ = write!(out, "\\u{unit:04x}");
                 }
             }
         }
@@ -103,6 +108,7 @@ pub(crate) fn python_json(value: &Value) -> String {
         _ => value.to_string(),
     }
 }
+
 pub(crate) fn option_string(options: &Options, name: &str, default: &str) -> String {
     options
         .get(name)
@@ -110,20 +116,24 @@ pub(crate) fn option_string(options: &Options, name: &str, default: &str) -> Str
         .map(python_str)
         .unwrap_or_else(|| default.into())
 }
+
 pub(crate) fn option_integer(options: &Options, name: &str, default: i64) -> Result<i64> {
     match options.get(name) {
         None => Ok(default),
-        Some(Value::Number(v)) if v.is_i64() => Ok(v.as_i64().unwrap_or(default)),
         Some(Value::String(v)) => Ok(v.parse()?),
-        _ => bail!("{name} must be an integer"),
+        Some(value) => value
+            .as_i64()
+            .with_context(|| format!("{name} must be an integer")),
     }
 }
+
 pub(crate) fn value_rows(value: Value) -> Vec<Value> {
     match value {
         Value::Array(items) => items.into_iter().map(row).collect(),
         other => vec![row(other)],
     }
 }
+
 fn row(value: Value) -> Value {
     if value.is_object() {
         value

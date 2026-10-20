@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
@@ -17,6 +17,7 @@ use tokio::{
 
 type Reply = Result<Value, RpcError>;
 type Writer = Box<dyn AsyncWrite + Unpin + Send>;
+type Pending = BTreeMap<u64, oneshot::Sender<Reply>>;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum RpcError {
@@ -32,6 +33,13 @@ pub enum RpcError {
     Closed,
 }
 
+impl RpcError {
+    /// JSON-RPC code for a method the receiver does not implement.
+    pub const METHOD_NOT_FOUND: i64 = -32601;
+    /// JSON-RPC code for an application error, such as a failed handler.
+    pub const SERVER_ERROR: i64 = -32000;
+}
+
 /// An inbound call, annotated with the host's connection identifier.
 #[derive(Debug)]
 pub struct Incoming {
@@ -43,15 +51,21 @@ pub struct Incoming {
 
 struct State {
     writer: tokio::sync::Mutex<Writer>,
-    pending: Mutex<BTreeMap<u64, oneshot::Sender<Reply>>>,
+    pending: Mutex<Pending>,
     sequence: AtomicU64,
     closed: AtomicBool,
 }
+
 impl State {
+    /// The requests awaiting a response. The lock is never held across an await.
+    fn pending(&self) -> MutexGuard<'_, Pending> {
+        self.pending.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn fail_pending(&self) {
         self.closed.store(true, Ordering::Release);
-        let pending = std::mem::take(&mut *self.pending.lock().unwrap_or_else(|p| p.into_inner()));
-        for (_, sender) in pending {
+        let pending = std::mem::take(&mut *self.pending());
+        for sender in pending.into_values() {
             let _ = sender.send(Err(RpcError::Closed));
         }
     }
@@ -68,13 +82,10 @@ struct PendingGuard {
     state: Arc<State>,
     id: u64,
 }
+
 impl Drop for PendingGuard {
     fn drop(&mut self) {
-        self.state
-            .pending
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .remove(&self.id);
+        self.state.pending().remove(&self.id);
     }
 }
 
@@ -96,57 +107,7 @@ impl Peer {
             sequence: AtomicU64::new(0),
             closed: AtomicBool::new(false),
         });
-        let task_state = Arc::clone(&state);
-        let task = tokio::spawn(async move {
-            let mut reader = BufReader::new(reader);
-            while let Ok(Some(payload)) = read_frame(&mut reader).await {
-                let Ok(message) = serde_json::from_slice::<Value>(&payload) else {
-                    break;
-                };
-                if !message.is_object()
-                    || message.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
-                {
-                    break;
-                }
-                if let Some(method) = message.get("method").and_then(Value::as_str) {
-                    let event = Incoming {
-                        source,
-                        id: message.get("id").cloned(),
-                        method: method.into(),
-                        params: message.get("params").cloned().unwrap_or(Value::Null),
-                    };
-                    if incoming.send(event).is_err() {
-                        break;
-                    }
-                } else if let Some(id) = message.get("id").and_then(Value::as_u64) {
-                    let sender = task_state
-                        .pending
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .remove(&id);
-                    if let Some(sender) = sender {
-                        let result = if let Some(error) = message.get("error") {
-                            Err(RpcError::Remote {
-                                code: error.get("code").and_then(Value::as_i64).unwrap_or(-32000),
-                                message: error
-                                    .get("message")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("remote error")
-                                    .into(),
-                            })
-                        } else if let Some(result) = message.get("result") {
-                            Ok(result.clone())
-                        } else {
-                            Err(RpcError::Protocol(
-                                "response has neither result nor error".into(),
-                            ))
-                        };
-                        let _ = sender.send(result);
-                    }
-                }
-            }
-            task_state.fail_pending();
-        });
+        let task = tokio::spawn(read_loop(reader, Arc::clone(&state), incoming, source));
         Self {
             state,
             reader: Arc::new(task.abort_handle()),
@@ -174,11 +135,7 @@ impl Peer {
             .checked_add(1)
             .ok_or_else(|| RpcError::Protocol("request ID exhausted".into()))?;
         let (sender, receiver) = oneshot::channel();
-        self.state
-            .pending
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert(id, sender);
+        self.state.pending().insert(id, sender);
         let _guard = PendingGuard {
             state: Arc::clone(&self.state),
             id,
@@ -191,11 +148,6 @@ impl Peer {
             .map_err(|_| RpcError::Closed)?
     }
 
-    pub async fn notify(&self, method: &str, params: Value) -> Result<(), RpcError> {
-        self.send(json!({"jsonrpc":"2.0", "method":method, "params":params}))
-            .await
-    }
-
     /// Reply to a request. Notifications deliberately produce no response.
     pub async fn respond(&self, id: Option<Value>, result: Reply) -> Result<(), RpcError> {
         let Some(id) = id else {
@@ -206,16 +158,12 @@ impl Peer {
             Err(error) => {
                 let code = match &error {
                     RpcError::Remote { code, .. } => *code,
-                    _ => -32000,
+                    _ => RpcError::SERVER_ERROR,
                 };
                 json!({"jsonrpc":"2.0", "id":id, "error":{"code":code,"message":error.to_string()}})
             }
         };
         self.send(message).await
-    }
-
-    pub fn is_closed(&self) -> bool {
-        self.state.closed.load(Ordering::Acquire)
     }
 
     /// Stop routing, fail outstanding requests, and close the write stream.
@@ -226,9 +174,67 @@ impl Peer {
     }
 }
 
+/// Route frames until EOF or a malformed message: requests and notifications
+/// go to the host's channel, responses to the request awaiting them.
+async fn read_loop(
+    reader: impl AsyncRead + Unpin,
+    state: Arc<State>,
+    incoming: mpsc::UnboundedSender<Incoming>,
+    source: usize,
+) {
+    let mut reader = BufReader::new(reader);
+    while let Ok(Some(payload)) = read_frame(&mut reader).await {
+        let Ok(message) = serde_json::from_slice::<Value>(&payload) else {
+            break;
+        };
+        if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+            break;
+        }
+        if let Some(method) = message.get("method").and_then(Value::as_str) {
+            let event = Incoming {
+                source,
+                id: message.get("id").cloned(),
+                method: method.into(),
+                params: message.get("params").cloned().unwrap_or(Value::Null),
+            };
+            if incoming.send(event).is_err() {
+                break;
+            }
+        } else if let Some(id) = message.get("id").and_then(Value::as_u64) {
+            let sender = state.pending().remove(&id);
+            if let Some(sender) = sender {
+                let _ = sender.send(reply(&message));
+            }
+        }
+    }
+    state.fail_pending();
+}
+
+/// A response's `result`, or its `error` as [`RpcError::Remote`].
+fn reply(message: &Value) -> Reply {
+    if let Some(error) = message.get("error") {
+        return Err(RpcError::Remote {
+            code: error
+                .get("code")
+                .and_then(Value::as_i64)
+                .unwrap_or(RpcError::SERVER_ERROR),
+            message: error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("remote error")
+                .into(),
+        });
+    }
+    message
+        .get("result")
+        .cloned()
+        .ok_or_else(|| RpcError::Protocol("response has neither result nor error".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[tokio::test]
     async fn peer_round_trip_and_callback() {
         let (a, b) = tokio::io::duplex(4096);

@@ -1,29 +1,39 @@
 //! Source ranges, not full-document Markdown serialization.
+use crate::values::{python_str, truthy};
 use anyhow::{Context, Result, bail, ensure};
 use insitu_protocol::Options;
 use regex::Regex;
 use serde_json::{Map, Value};
-use std::{collections::BTreeMap, ops::Range, str::FromStr};
+use std::{collections::BTreeMap, ops::Range, str::FromStr, sync::LazyLock};
+
+static BEGIN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)<!--\s*insitu:begin(?:\s+(?P<kind>[\w.-]+))?\s*\n(?P<header>.*?)-->")
+        .expect("valid begin-marker regex")
+});
+
+static END: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<!--\s*insitu:end\s*-->").expect("valid end-marker regex"));
 
 #[derive(Clone, Debug)]
-pub struct Region {
-    pub id: String,
-    pub kind: String,
-    pub options: Options,
-    pub line: usize,
-    pub content: Range<usize>,
+pub(crate) struct Region {
+    pub(crate) id: String,
+    pub(crate) kind: String,
+    pub(crate) options: Options,
+    pub(crate) line: usize,
+    pub(crate) content: Range<usize>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Document {
-    pub text: String,
-    pub frontmatter: Options,
-    pub body_offset: usize,
-    pub regions: Vec<Region>,
+pub(crate) struct Document {
+    pub(crate) text: String,
+    pub(crate) frontmatter: Options,
+    pub(crate) body_offset: usize,
+    pub(crate) regions: Vec<Region>,
     yaml_range: Option<Range<usize>>,
 }
+
 impl Document {
-    pub fn parse(text: String) -> Result<Self> {
+    pub(crate) fn parse(text: String) -> Result<Self> {
         let yaml_range = frontmatter_range(&text);
         let (frontmatter, body_offset) = if let Some((range, end)) = &yaml_range {
             (parse_yaml(&text[range.clone()])?, *end)
@@ -39,7 +49,8 @@ impl Document {
             yaml_range: yaml_range.map(|(range, _)| range),
         })
     }
-    pub fn source_body(&self) -> String {
+
+    pub(crate) fn source_body(&self) -> String {
         let mut body = self.text[self.body_offset..].to_owned();
         for region in self.regions.iter().rev() {
             body.replace_range(
@@ -49,13 +60,15 @@ impl Document {
         }
         body
     }
-    pub fn source_frontmatter(&self) -> Options {
+
+    pub(crate) fn source_frontmatter(&self) -> Options {
         self.frontmatter
             .iter()
             .filter(|(key, _)| !["insitu", "generated"].contains(&key.as_str()))
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect()
     }
+
     pub(crate) fn materializations(&self) -> Vec<(String, Options)> {
         let Some(raw) = self
             .frontmatter
@@ -81,15 +94,12 @@ impl Document {
 }
 
 fn frontmatter_range(text: &str) -> Option<(Range<usize>, usize)> {
-    let start = if text.starts_with("---\r\n") {
-        5
-    } else if text.starts_with("---\n") {
-        4
-    } else {
-        return None;
-    };
+    let yaml = text
+        .strip_prefix("---\r\n")
+        .or_else(|| text.strip_prefix("---\n"))?;
+    let start = text.len() - yaml.len();
     let mut offset = start;
-    for line in text[start..].split_inclusive('\n') {
+    for line in yaml.split_inclusive('\n') {
         if line.starts_with("---") && line.trim_end() == "---" {
             return Some((start..offset, offset + line.len()));
         }
@@ -110,6 +120,7 @@ fn parse_yaml(raw: &str) -> Result<Options> {
         .cloned()
         .context("YAML front matter must be a mapping")
 }
+
 fn yaml_json(value: serde_norway::Value) -> Result<Value> {
     use serde_norway::Value as Y;
     Ok(match value {
@@ -124,9 +135,7 @@ fn yaml_json(value: serde_norway::Value) -> Result<Value> {
             let mut map = Map::new();
             for (key, value) in values {
                 let key = yaml_json(key)?;
-                let key = key
-                    .as_str()
-                    .map_or_else(|| crate::values::python_str(&key), str::to_owned);
+                let key = key.as_str().map_or_else(|| python_str(&key), str::to_owned);
                 map.insert(key, yaml_json(value)?);
             }
             Value::Object(map)
@@ -136,25 +145,22 @@ fn yaml_json(value: serde_norway::Value) -> Result<Value> {
 }
 
 /// Parse paired markers outside fenced code. Offsets are UTF-8 byte offsets.
-pub fn parse_regions(text: &str, start: usize) -> Result<Vec<Region>> {
+pub(crate) fn parse_regions(text: &str, start: usize) -> Result<Vec<Region>> {
     ensure!(
         text.is_char_boundary(start),
         "invalid Markdown start offset"
     );
-    let begin =
-        Regex::new(r"(?s)<!--\s*insitu:begin(?:\s+(?P<kind>[\w.-]+))?\s*\n(?P<header>.*?)-->")?;
-    let end = Regex::new(r"<!--\s*insitu:end\s*-->")?;
     let fences = fenced_ranges(text, start);
     let outside = |position| !fences.iter().any(|range| range.contains(&position));
     let mut cursor = start;
     let mut regions = Vec::new();
-    while let Some(capture) = begin.captures_at(text, cursor) {
+    while let Some(capture) = BEGIN.captures_at(text, cursor) {
         let opening = capture.get(0).context("missing directive capture")?;
         if !outside(opening.start()) {
             cursor = opening.end();
             continue;
         }
-        let closing = end
+        let closing = END
             .find_iter(&text[opening.end()..])
             .map(|m| opening.end() + m.start()..opening.end() + m.end())
             .find(|m| outside(m.start));
@@ -178,13 +184,13 @@ pub fn parse_regions(text: &str, start: usize) -> Result<Vec<Region>> {
             .context("directive must be a table")?;
         let id = options
             .get("id")
-            .filter(|v| crate::values::truthy(v))
-            .map(crate::values::python_str)
+            .filter(|v| truthy(v))
+            .map(python_str)
             .unwrap_or_else(|| format!("region-{}", regions.len() + 1));
         let kind = capture
             .name("kind")
             .map(|m| m.as_str().to_owned())
-            .or_else(|| options.get("kind").map(crate::values::python_str))
+            .or_else(|| options.get("kind").map(python_str))
             .unwrap_or_else(|| "sql".into());
         regions.push(Region {
             id,
@@ -197,6 +203,7 @@ pub fn parse_regions(text: &str, start: usize) -> Result<Vec<Region>> {
     }
     Ok(regions)
 }
+
 fn fenced_ranges(text: &str, start: usize) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
     let mut opened: Option<(u8, usize, usize)> = None;
@@ -227,7 +234,7 @@ fn fenced_ranges(text: &str, start: usize) -> Vec<Range<usize>> {
     ranges
 }
 
-pub fn source_text(text: &str) -> Result<String> {
+pub(crate) fn source_text(text: &str) -> Result<String> {
     let mut result = text.to_owned();
     for region in parse_regions(text, 0)?.iter().rev() {
         result.replace_range(region.content.clone(), "\n");
@@ -255,11 +262,10 @@ pub(crate) fn replace_regions(
 }
 
 pub(crate) fn pointer_parts(pointer: &str) -> Result<Vec<String>> {
-    ensure!(
-        pointer.starts_with('/'),
-        "front-matter pointer must start with '/': {pointer}"
-    );
-    Ok(pointer[1..]
+    let parts = pointer
+        .strip_prefix('/')
+        .with_context(|| format!("front-matter pointer must start with '/': {pointer}"))?;
+    Ok(parts
         .split('/')
         .map(|part| part.replace("~1", "/").replace("~0", "~"))
         .collect())
@@ -348,6 +354,7 @@ pub(crate) fn check_pointer_conflicts(pointers: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn fences_unicode_and_default_ids() {
         let text = "🦀\n```md\n<!-- insitu:begin include\npath='ignored'\n-->\n<!-- insitu:end -->\n```\n<!-- insitu:begin include\npath='x'\n-->old<!-- insitu:end -->";
@@ -361,10 +368,12 @@ mod tests {
         assert!(changed.contains("\n\nnew\n\n"));
         assert_eq!(replace_regions(&changed, &replacements).unwrap(), changed);
     }
+
     #[test]
     fn malformed_marker_is_an_error() {
         assert!(parse_regions("<!-- insitu:begin\nid='x'\n-->", 0).is_err());
     }
+
     #[test]
     fn source_projection_excludes_owned_fields() {
         let document = Document::parse(
@@ -374,6 +383,7 @@ mod tests {
         assert_eq!(document.source_frontmatter().len(), 1);
         assert_eq!(document.source_body(), "authored\n");
     }
+
     #[test]
     fn yaml_edit_preserves_authored_comments_and_quotes() {
         let original = "---\n# leave me\ntitle: 'exact quote'\n---\n\n# body\n";
@@ -389,6 +399,7 @@ mod tests {
         assert!(changed.ends_with("---\n\n# body\n"));
         assert_eq!(replace_frontmatter(&changed, &patches).unwrap(), changed);
     }
+
     #[test]
     fn pointer_overlap_and_escaping() {
         assert!(

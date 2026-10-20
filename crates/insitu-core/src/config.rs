@@ -22,16 +22,19 @@ state = ".insitu/index.db"
 debounce_ms = 25
 step_ms = 5
 "#;
+
 const DEFAULT_MODEL: &str = "select\n  path,\n  coalesce(title, name) as title,\n  status\nfrom documents\nwhere status is not null and status != 'done'\norder by path;\n";
+
 const DEFAULT_TEMPLATE: &str = "| Item | Status |\n| --- | --- |\n{% for row in rows -%}\n| [{{ row.title }}]({{ row.path | relative_to(this.directory) }}) | {{ row.status }} |\n{% else -%}\n| _None_ | |\n{% endfor %}\n";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Sources {
-    pub include: Vec<String>,
-    pub respect_gitignore: bool,
-    pub exclude: Vec<String>,
+pub(crate) struct Sources {
+    pub(crate) include: Vec<String>,
+    pub(crate) respect_gitignore: bool,
+    pub(crate) exclude: Vec<String>,
 }
+
 impl Default for Sources {
     fn default() -> Self {
         Self {
@@ -54,13 +57,15 @@ impl Default for Sources {
         }
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Paths {
-    pub models: String,
-    pub templates: String,
-    pub state: String,
+pub(crate) struct Paths {
+    pub(crate) models: String,
+    pub(crate) templates: String,
+    pub(crate) state: String,
 }
+
 impl Default for Paths {
     fn default() -> Self {
         Self {
@@ -70,12 +75,16 @@ impl Default for Paths {
         }
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Watch {
-    pub debounce_ms: u64,
-    pub step_ms: u64,
+pub(crate) struct Watch {
+    pub(crate) debounce_ms: u64,
+    /// Accepted for compatibility with existing configurations; the native
+    /// watcher only debounces.
+    pub(crate) step_ms: u64,
 }
+
 impl Default for Watch {
     fn default() -> Self {
         Self {
@@ -84,31 +93,34 @@ impl Default for Watch {
         }
     }
 }
+
 fn enabled() -> bool {
     true
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ExtensionSource {
+pub(crate) struct ExtensionSource {
     #[serde(default)]
-    pub path: Option<String>,
+    pub(crate) path: Option<String>,
     #[serde(default)]
-    pub source: Option<String>,
+    pub(crate) source: Option<String>,
     #[serde(default = "enabled")]
-    pub enabled: bool,
+    pub(crate) enabled: bool,
     #[serde(default)]
-    pub allow_replace: Vec<String>,
+    pub(crate) allow_replace: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Config {
-    pub version: u8,
-    pub sources: Sources,
-    pub paths: Paths,
-    pub watch: Watch,
-    pub extensions: Vec<ExtensionSource>,
+pub(crate) struct Config {
+    pub(crate) version: u8,
+    pub(crate) sources: Sources,
+    pub(crate) paths: Paths,
+    pub(crate) watch: Watch,
+    pub(crate) extensions: Vec<ExtensionSource>,
 }
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -120,13 +132,15 @@ impl Default for Config {
         }
     }
 }
+
 impl Config {
-    pub fn load(root: &Path) -> Result<Self> {
+    pub(crate) fn load(root: &Path) -> Result<Self> {
         let text = fs::read_to_string(root.join("insitu.toml")).context("read insitu.toml")?;
         let config: Self = toml::from_str(&text).context("invalid insitu.toml")?;
         config.validate()?;
         Ok(config)
     }
+
     fn validate(&self) -> Result<()> {
         ensure!(
             self.version == 1,
@@ -220,15 +234,22 @@ pub fn initialize_project(root: &Path, force: bool) -> Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn defaults_and_unknown_fields() {
         let c: Config = toml::from_str("version=1").unwrap();
         c.validate().unwrap();
         assert_eq!(c.paths.models, "insitu/models");
+        assert_eq!(
+            toml::from_str::<Config>(DEFAULT_CONFIG).unwrap(),
+            Config::default(),
+            "`insitu init` must write the same defaults that omitted keys get"
+        );
         assert!(toml::from_str::<Config>("versoin=1").is_err());
         let c: Config = toml::from_str("[paths]\nstate='../outside'").unwrap();
         assert!(c.validate().is_err());
     }
+
     #[test]
     fn init_does_not_replace_definitions() {
         let temp = tempfile::tempdir().unwrap();

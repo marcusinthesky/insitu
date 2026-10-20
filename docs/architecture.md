@@ -2,8 +2,9 @@
 
 ## One owner, concrete data
 
-The CLI owns a `Project`. Project owns Config, Index, Builtins, Registry and
-Process handles. Pure computations remain synchronous. There is no shared mutable
+The CLI owns a `Project`. Project owns Config, Policy, Index, Builtins, Registry and
+Process handles. Policy decides which paths are sources; Index is only the SQLite
+projection. Pure computations remain synchronous. There is no shared mutable
 engine behind an async mutex, no general actor framework and no generic repository
 backend. Each invocation carries owned options, location and dependency trace.
 
@@ -32,10 +33,11 @@ creates a dependency cycle instead of repeatedly expanding the document.
 Each process has a `Peer`. Its reader task routes numeric-ID responses independently
 from inbound method calls. While Project awaits an extension result, it services
 callbacks from an inbound channel. A callback can resolve a nested extension
-resource without blocking the peer's response reader. Recursive capability/resource
-methods use a boxed future only at this boundary.
+resource without blocking the peer's response reader. The recursive calls back into
+`invoke` are the only boxed futures.
 
-A capability registry holds a native-handler enum or a process index and name.
+The capability registry maps each capability to a `Handler`: a `Builtin` variant or
+an extension's process index and capability name.
 Transforms run base -> topologically ordered decorators -> contributors. Replacement
 requires explicit project approval. Validators produce structured diagnostics.
 Subprocesses inherit user privileges; permissions restrict host-mediated requests
@@ -46,11 +48,12 @@ but are not an operating-system sandbox.
 Python keeps the decorator API, Pydantic TypeAdapter validation, sync/async handler
 support and Context.resource. Rust uses registration methods with generic parameter
 and result types; Serde and Schemars handle the boundary. Domain code does not carry
-those generic parameters. Rustdoc on `insitu-sdk` includes a small example.
+those generic parameters. `insitu-sdk` re-exports the protocol types that handlers
+use, so an extension depends on that crate alone; its rustdoc includes an example.
 
 ## Intentional first-pass simplification
 
-The candidate scans and renders everything on each reconciliation. This simplifies
+The engine scans and renders everything on each reconciliation. This simplifies
 ownership and avoids pretending an untested incremental cache is correct. It is,
 however, a compatibility gap for invocation counts and side effects, not merely a
-performance claim. See the release blockers before calling the rewrite drop-in.
+performance claim; see [compatibility](compatibility.md).

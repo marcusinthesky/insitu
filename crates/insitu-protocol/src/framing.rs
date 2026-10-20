@@ -85,6 +85,7 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(writer: &mut W, payload: &[u8]) 
 mod tests {
     use super::*;
     use tokio::io::BufReader;
+
     #[tokio::test]
     async fn utf8_is_measured_in_bytes() {
         let data = "\"café🦀\"".as_bytes();
@@ -94,6 +95,7 @@ mod tests {
         assert_eq!(read_frame(&mut reader).await.unwrap().unwrap(), data);
         assert!(read_frame(&mut reader).await.unwrap().is_none());
     }
+
     #[tokio::test]
     async fn malformed_and_truncated_frames_fail() {
         for value in [
@@ -111,6 +113,7 @@ mod tests {
             );
         }
     }
+
     #[tokio::test]
     async fn header_budget_is_bounded_without_a_newline() {
         let value = vec![b'x'; MAX_HEADER_BYTES + 1];

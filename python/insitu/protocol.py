@@ -27,30 +27,9 @@ def frame(payload: bytes) -> bytes:
 
 
 async def read_stream_message(reader: asyncio.StreamReader) -> bytes:
-    headers: dict[str, str] = {}
-    consumed = 0
-    while True:
-        try:
-            line = await reader.readline()
-        except ValueError as error:
-            raise RpcProtocolError("JSON-RPC header exceeds limit") from error
-        if not line:
-            if consumed:
-                raise RpcProtocolError("truncated JSON-RPC headers")
-            return b""
-        consumed += len(line)
-        if consumed > _MAX_HEADERS:
-            raise RpcProtocolError("JSON-RPC headers exceed 8 KiB")
-        if line in (b"\n", b"\r\n"):
-            break
-        try:
-            name, separator, value = line.decode("ascii").partition(":")
-        except UnicodeDecodeError as error:
-            raise RpcProtocolError("non-ASCII JSON-RPC header") from error
-        name = name.strip().lower()
-        if not separator or name == "content-length" and name in headers:
-            raise RpcProtocolError("malformed or duplicate JSON-RPC header")
-        headers[name] = value.strip()
+    headers = await _read_headers(reader)
+    if headers is None:
+        return b""
     try:
         length = int(headers["content-length"])
     except (KeyError, ValueError) as error:
@@ -61,6 +40,44 @@ async def read_stream_message(reader: asyncio.StreamReader) -> bytes:
         return await reader.readexactly(length)
     except asyncio.IncompleteReadError as error:
         raise RpcProtocolError("truncated JSON-RPC payload") from error
+
+
+async def _read_headers(reader: asyncio.StreamReader) -> dict[str, str] | None:
+    """Header names (lowercased) to values, or None at a clean end of stream."""
+    headers: dict[str, str] = {}
+    consumed = 0
+    while True:
+        try:
+            line = await reader.readline()
+        except ValueError as error:
+            raise RpcProtocolError("JSON-RPC header exceeds limit") from error
+        consumed += len(line)
+        match line:
+            case b"" if consumed == 0:
+                return None
+            case b"":
+                raise RpcProtocolError("truncated JSON-RPC headers")
+            case _ if consumed > _MAX_HEADERS:
+                raise RpcProtocolError("JSON-RPC headers exceed 8 KiB")
+            case b"\n" | b"\r\n":
+                return headers
+        name, value = _parse_header(line)
+        if name == "content-length" and name in headers:
+            raise RpcProtocolError("duplicate Content-Length header")
+        headers[name] = value
+
+
+def _parse_header(line: bytes) -> tuple[str, str]:
+    """A ``Name: value`` line as its lowercased name and its value."""
+    try:
+        text = line.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise RpcProtocolError("non-ASCII JSON-RPC header") from error
+    match text.partition(":"):
+        case (name, ":", value):
+            return name.strip().lower(), value.strip()
+        case _:
+            raise RpcProtocolError("malformed JSON-RPC header")
 
 
 class JsonRpcPeer:
@@ -157,20 +174,8 @@ class JsonRpcPeer:
                     task = asyncio.create_task(self._dispatch(message))
                     self._tasks.add(task)
                     task.add_done_callback(self._tasks.discard)
-                    continue
-                future = self._pending.get(message.get("id"))
-                if future is None or future.done():
-                    continue
-                if error := message.get("error"):
-                    future.set_exception(
-                        RpcProtocolError(str(error.get("message", error)))
-                    )
-                elif "result" in message:
-                    future.set_result(message["result"])
                 else:
-                    future.set_exception(
-                        RpcProtocolError("response has neither result nor error")
-                    )
+                    self._resolve(message)
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - any reader failure must fail pending requests
@@ -178,6 +183,20 @@ class JsonRpcPeer:
         finally:
             if self._closed is None:
                 self._fail_pending(RpcProtocolError("RPC peer closed"))
+
+    def _resolve(self, response: dict[str, Any]) -> None:
+        """Complete the pending request a response answers; ignore stale ones."""
+        future = self._pending.get(response.get("id"))
+        if future is None or future.done():
+            return
+        if error := response.get("error"):
+            future.set_exception(RpcProtocolError(str(error.get("message", error))))
+        elif "result" in response:
+            future.set_result(response["result"])
+        else:
+            future.set_exception(
+                RpcProtocolError("response has neither result nor error")
+            )
 
     async def _dispatch(self, message: dict[str, Any]) -> None:
         identifier = message.get("id")

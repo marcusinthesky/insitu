@@ -23,6 +23,3 @@ notify.workspace = true
 [[bin]]
 name = "insitu"
 path = "src/main.rs"
-
-[dev-dependencies]
-tempfile.workspace = true

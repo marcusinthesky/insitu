@@ -36,6 +36,3 @@ hex.workspace = true
 tempfile.workspace = true
 url.workspace = true
 pep440_rs.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true

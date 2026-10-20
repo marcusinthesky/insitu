@@ -1,13 +1,14 @@
 //! The four built-ins share ordinary data; no plugin trait hierarchy is needed.
 use crate::{
-    Config,
+    config::Paths,
     graph::Graph,
-    index::{Index, Policy},
+    index::Index,
     paths,
-    values::*,
+    policy::{Policy, matcher},
+    values::{option_integer, option_string, python_json, python_str, truthy, value_rows},
 };
 use anyhow::{Context, Result, ensure};
-use insitu_protocol::{InvocationResult, Location, Options};
+use insitu_protocol::{CapabilityKind, InvocationResult, Location, Options};
 use minijinja::{Environment, UndefinedBehavior};
 use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
@@ -15,18 +16,42 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, PoisonError},
 };
+
+/// Capabilities implemented natively rather than by an extension process.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Builtin {
+    SqlResource,
+    Jinja,
+    Include,
+    Tree,
+    SqlTransform,
+    Materialize,
+}
+
+impl Builtin {
+    /// Every built-in, with the kind and name it is registered under.
+    pub(crate) const ALL: [(Self, CapabilityKind, &'static str); 6] = [
+        (Self::SqlResource, CapabilityKind::Resource, "sql"),
+        (Self::Jinja, CapabilityKind::Renderer, "jinja"),
+        (Self::Include, CapabilityKind::Transform, "include"),
+        (Self::Tree, CapabilityKind::Transform, "tree"),
+        (Self::SqlTransform, CapabilityKind::Transform, "sql"),
+        (Self::Materialize, CapabilityKind::Transform, "materialize"),
+    ];
+}
 
 pub(crate) struct Builtins {
     root: PathBuf,
-    config: Config,
+    paths: Paths,
 }
+
 impl Builtins {
-    pub(crate) fn new(root: &Path, config: &Config) -> Self {
+    pub(crate) fn new(root: &Path, paths: Paths) -> Self {
         Self {
             root: root.into(),
-            config: config.clone(),
+            paths,
         }
     }
 
@@ -41,15 +66,15 @@ impl Builtins {
         let text = fs::read_to_string(&path)?;
         let lines: Vec<_> = text.lines().collect();
         let start = option_integer(options, "start", 1)?;
-        let end = option_integer(options, "end", lines.len() as i64)?;
+        let end = option_integer(options, "end", i64::try_from(lines.len())?)?;
         ensure!(
             start >= 1 && end >= start,
             "include lines require 1 <= start <= end"
         );
         let selected = lines
             .iter()
-            .skip((start - 1) as usize)
-            .take((end - start + 1) as usize)
+            .skip(usize::try_from(start - 1)?)
+            .take(usize::try_from(end - start + 1)?)
             .copied()
             .collect::<Vec<_>>()
             .join("\n");
@@ -93,7 +118,7 @@ impl Builtins {
                 patterns.push(python_str(item));
             }
         }
-        let extra = crate::index::matcher(&self.root, &patterns)?;
+        let extra = matcher(&self.root, &patterns)?;
         let mut lines = vec![format!(
             "{}/",
             base.file_name().and_then(|v| v.to_str()).unwrap_or("")
@@ -103,7 +128,7 @@ impl Builtins {
             policy,
             extra: &extra,
             directories_only,
-            depth: depth as usize,
+            depth: usize::try_from(depth)?,
         }
         .walk(&base, "", 1, &mut lines)?;
         Ok(InvocationResult {
@@ -129,7 +154,7 @@ impl Builtins {
         let name = option_string(options, "model", "");
         ensure!(!name.is_empty(), "SQL materialization requires model");
         let mut compiler = Compiler {
-            root: paths::inside_for_write(&self.root, &self.config.paths.models)?,
+            root: paths::inside_for_write(&self.root, &self.paths.models)?,
             rendered: BTreeMap::new(),
             graph: Graph::default(),
             files: Vec::new(),
@@ -157,7 +182,7 @@ impl Builtins {
         bindings.insert("insitu_dir".into(), location.directory.clone().into());
         bindings.insert("insitu_root".into(), location.root.clone().into());
         bindings.insert("insitu_depth".into(), location.depth.into());
-        bindings.extend(params(options)?.clone());
+        bindings.extend(params(options)?);
         let rows = index.query(&sql, &bindings)?;
         let mut dependencies = vec!["index:documents".into()];
         for path in compiler.files {
@@ -203,7 +228,7 @@ impl Builtins {
                     .replace('\'', "\\u0027")
             ),
             _ => {
-                let root = paths::inside_for_write(&self.root, &self.config.paths.templates)?;
+                let root = paths::inside_for_write(&self.root, &self.paths.templates)?;
                 let mut env = Environment::new();
                 env.set_undefined_behavior(UndefinedBehavior::Strict);
                 env.set_keep_trailing_newline(true);
@@ -231,10 +256,7 @@ impl Builtins {
         let dependencies = if template.starts_with("@insitu/") {
             vec![]
         } else {
-            vec![format!(
-                "fs:file:{}/{}",
-                self.config.paths.templates, template
-            )]
+            vec![format!("fs:file:{}/{}", self.paths.templates, template)]
         };
         Ok(InvocationResult {
             content: Some(content.trim_end().into()),
@@ -243,6 +265,7 @@ impl Builtins {
         })
     }
 }
+
 fn template_error(error: impl std::fmt::Display) -> minijinja::Error {
     minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, error.to_string())
 }
@@ -263,7 +286,9 @@ fn python_method(
                 if separator == Some("") {
                     return Err(template_error("empty separator"));
                 }
-                return Ok(V::from(python_rsplit(text, separator, limit.unwrap_or(-1))));
+                // Python treats a negative `maxsplit` as no limit.
+                let limit = limit.and_then(|limit| usize::try_from(limit).ok());
+                return Ok(V::from(python_rsplit(text, separator, limit)));
             }
             "ljust" | "rjust" => {
                 let (width, fill): (usize, Option<&str>) = from_args(args)?;
@@ -288,13 +313,15 @@ fn python_method(
     }
     minijinja_contrib::pycompat::unknown_method_callback(state, value, method, args)
 }
-fn python_rsplit(text: &str, separator: Option<&str>, limit: i64) -> Vec<String> {
+
+/// Python's `str.rsplit(separator, maxsplit)`; a `None` limit splits everywhere.
+fn python_rsplit(text: &str, separator: Option<&str>, limit: Option<usize>) -> Vec<String> {
     let Some(separator) = separator else {
         // Whitespace mode: runs of whitespace separate, and empty fields are dropped.
         let mut parts = Vec::new();
         let mut rest = text.trim_end();
         while !rest.is_empty() {
-            if limit >= 0 && parts.len() as i64 == limit {
+            if limit == Some(parts.len()) {
                 parts.push(rest.trim_start().to_owned());
                 break;
             }
@@ -313,30 +340,32 @@ fn python_rsplit(text: &str, separator: Option<&str>, limit: i64) -> Vec<String>
         parts.reverse();
         return parts;
     };
-    let mut parts: Vec<String> = if limit < 0 {
-        text.rsplit(separator).map(str::to_owned).collect()
-    } else {
-        text.rsplitn(limit as usize + 1, separator)
+    let mut parts: Vec<String> = match limit {
+        None => text.rsplit(separator).map(str::to_owned).collect(),
+        Some(limit) => text
+            .rsplitn(limit + 1, separator)
             .map(str::to_owned)
-            .collect()
+            .collect(),
     };
     parts.reverse();
     parts
 }
-fn params(options: &Options) -> Result<&Options> {
-    // A shared empty map avoids scattering optional-parameter handling.
-    static EMPTY: std::sync::LazyLock<Options> = std::sync::LazyLock::new(Options::new);
+
+/// The `params` table, or an empty one.
+fn params(options: &Options) -> Result<Options> {
     match options.get("params") {
-        None => Ok(&EMPTY),
-        Some(value) => value.as_object().context("params must be a table"),
+        None => Ok(Options::new()),
+        Some(value) => value.as_object().cloned().context("params must be a table"),
     }
 }
+
 struct Compiler {
     root: PathBuf,
     rendered: BTreeMap<String, String>,
     graph: Graph,
     files: Vec<PathBuf>,
 }
+
 impl Compiler {
     fn visit(&mut self, name: &str) -> Result<()> {
         if self.rendered.contains_key(name) {
@@ -352,7 +381,7 @@ impl Compiler {
         env.add_function("ref", move |name: String| {
             captured
                 .lock()
-                .unwrap_or_else(|p| p.into_inner())
+                .unwrap_or_else(PoisonError::into_inner)
                 .push(name.clone());
             alias(&name)
         });
@@ -362,7 +391,10 @@ impl Compiler {
             .trim_end_matches(';')
             .to_owned();
         self.graph.node(name);
-        let dependencies = references.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let dependencies = references
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         for dependency in dependencies {
             self.graph.edge(name, &dependency)?;
             self.visit(&dependency)?;
@@ -372,6 +404,7 @@ impl Compiler {
         Ok(())
     }
 }
+
 fn alias(name: &str) -> String {
     let stem: String = name
         .chars()
@@ -388,12 +421,14 @@ fn alias(name: &str) -> String {
         &hex::encode(Sha1::digest(name.as_bytes()))[..8]
     )
 }
+
 fn indent(text: &str) -> String {
     text.lines()
         .map(|line| format!("  {line}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
+
 fn table(rows: &[Value]) -> String {
     let Some(first) = rows.first().and_then(Value::as_object) else {
         return "_No rows._".into();
@@ -421,6 +456,7 @@ fn table(rows: &[Value]) -> String {
     }
     lines.join("\n")
 }
+
 fn relative_to(value: &str, directory: &str) -> String {
     fn normalize(value: &str) -> Vec<&str> {
         let mut out = Vec::new();
@@ -446,6 +482,7 @@ fn relative_to(value: &str, directory: &str) -> String {
         parts.join("/")
     }
 }
+
 struct Tree<'a> {
     root: &'a Path,
     policy: &'a Policy,
@@ -453,6 +490,7 @@ struct Tree<'a> {
     directories_only: bool,
     depth: usize,
 }
+
 impl Tree<'_> {
     fn walk(
         &self,
@@ -507,29 +545,34 @@ impl Tree<'_> {
         Ok(())
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn relative_paths() {
         assert_eq!(relative_to("tasks/alpha.md", "docs"), "../tasks/alpha.md");
     }
+
     #[test]
     fn aliases_do_not_collide() {
         assert_ne!(alias("a/b"), alias("a_b"));
     }
+
     // Expectations are Python Jinja2 output; regenerate them with Jinja2, never by hand.
     const ORACLE: &str = include_str!("../../../tests/fixtures/templates/children.expected.json");
+
     #[test]
     fn python_string_methods_match_python() {
         let oracle: Value = serde_json::from_str(ORACLE).unwrap();
-        let cases: [(&str, Option<&str>, i64); 6] = [
-            ("a b  c ", None, -1),
-            ("a b  c", None, 1),
-            ("a,b,,c", Some(","), -1),
-            ("a,b,,c", Some(","), 1),
-            ("  ", None, -1),
-            ("x", None, 0),
+        let cases: [(&str, Option<&str>, Option<usize>); 6] = [
+            ("a b  c ", None, None),
+            ("a b  c", None, Some(1)),
+            ("a,b,,c", Some(","), None),
+            ("a,b,,c", Some(","), Some(1)),
+            ("  ", None, None),
+            ("x", None, Some(0)),
         ];
         for ((text, separator, limit), expected) in
             cases.into_iter().zip(oracle["rsplit"].as_array().unwrap())
@@ -537,7 +580,7 @@ mod tests {
             assert_eq!(
                 json!(python_rsplit(text, separator, limit)),
                 *expected,
-                "{text:?}.rsplit({separator:?}, {limit})"
+                "{text:?}.rsplit({separator:?}, {limit:?})"
             );
         }
         let mut env = Environment::new();
@@ -549,6 +592,7 @@ mod tests {
         );
         assert!(env.render_str(r#"{{ "a".rsplit("") }}"#, ()).is_err());
     }
+
     #[test]
     fn pricing_perspective_children_template_matches_jinja2() {
         let oracle: Value = serde_json::from_str(ORACLE).unwrap();
@@ -564,7 +608,7 @@ mod tests {
             .as_object()
             .cloned()
             .unwrap();
-        let result = Builtins::new(dir.path(), &Config::default())
+        let result = Builtins::new(dir.path(), Paths::default())
             .render(
                 oracle["rows"].clone(),
                 &options,
@@ -573,6 +617,7 @@ mod tests {
             .unwrap();
         assert_eq!(result.content.as_deref(), oracle["expected"].as_str());
     }
+
     #[test]
     fn table_preserves_query_order() {
         assert_eq!(

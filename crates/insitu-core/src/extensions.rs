@@ -1,15 +1,15 @@
 //! Manifest validation, capability composition, and supervised subprocesses.
 //! Domain work remains in Project; a process never receives direct write access
 //! through this API (but is an ordinary trusted OS process, not a sandbox).
-use crate::{Config, graph::Graph, installer::Installer, paths};
+use crate::{builtins::Builtin, config::Config, graph::Graph, installer::Installer, paths};
 use anyhow::{Context, Result, bail, ensure};
 use insitu_protocol::{
-    CapabilityKind as Kind, CapabilitySpec, CompositionMode as Mode, ExtensionManifest, Incoming,
-    InitializeResult, Peer,
+    CapabilityKind, CapabilitySpec, CompositionMode, ExtensionManifest, Incoming, InitializeResult,
+    Peer,
 };
 use pep440_rs::{Version, VersionSpecifiers};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
     fs,
     path::{Path, PathBuf},
     process::Stdio,
@@ -52,7 +52,10 @@ pub(crate) fn load_manifest(path: &Path) -> Result<ExtensionManifest> {
             "duplicate capability: {}",
             spec.name
         );
-        let targeted = matches!(spec.mode, Mode::Decorate | Mode::Replace);
+        let targeted = matches!(
+            spec.mode,
+            CompositionMode::Decorate | CompositionMode::Replace
+        );
         ensure!(
             targeted == spec.target.as_ref().is_some_and(|t| !t.is_empty()),
             "composition requires target exactly for decorate/replace"
@@ -87,63 +90,82 @@ pub(crate) fn check_version(manifest: &ExtensionManifest, constraint: &str) -> R
     Ok(())
 }
 
+/// Whether a capability reference, `name` or `kind:name`, names this capability.
+pub(crate) fn names_capability(reference: &str, kind: CapabilityKind, name: &str) -> bool {
+    reference == name
+        || reference
+            .strip_prefix(kind.as_str())
+            .and_then(|rest| rest.strip_prefix(':'))
+            == Some(name)
+}
+
+/// Whether a package provides, replaces or extends the referenced capability.
+pub(crate) fn provides(manifest: &ExtensionManifest, reference: &str) -> bool {
+    manifest.capabilities.iter().any(|spec| {
+        let name = spec.target.as_deref().unwrap_or(&spec.name);
+        names_capability(reference, spec.kind, name)
+    })
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum Handler {
-    Builtin(Kind, String),
+    Builtin(Builtin),
     External { process: usize, name: String },
 }
+
 #[derive(Clone)]
 pub(crate) struct Step {
     pub(crate) handler: Handler,
-    pub(crate) mode: Mode,
+    pub(crate) mode: CompositionMode,
 }
+
 #[derive(Default)]
 pub(crate) struct Registry {
-    primary: BTreeMap<(Kind, String), Handler>,
+    primary: BTreeMap<(CapabilityKind, String), Handler>,
     decorators: BTreeMap<String, BTreeMap<String, (CapabilitySpec, Handler)>>,
     contributors: BTreeMap<String, Vec<Handler>>,
 }
+
 impl Registry {
     pub(crate) fn builtins() -> Self {
         let mut this = Self::default();
-        for (kind, name) in [
-            (Kind::Resource, "sql"),
-            (Kind::Renderer, "jinja"),
-            (Kind::Transform, "include"),
-            (Kind::Transform, "tree"),
-            (Kind::Transform, "sql"),
-            (Kind::Transform, "materialize"),
-        ] {
+        for (builtin, kind, name) in Builtin::ALL {
             this.primary
-                .insert((kind, name.into()), Handler::Builtin(kind, name.into()));
+                .insert((kind, name.into()), Handler::Builtin(builtin));
         }
         this
     }
-    pub(crate) fn contains(&self, dependency: &str) -> bool {
-        self.primary.keys().any(|(kind, name)| {
-            dependency == name || dependency == format!("{}:{name}", kind.as_str())
-        })
+
+    pub(crate) fn contains(&self, reference: &str) -> bool {
+        self.primary
+            .keys()
+            .any(|(kind, name)| names_capability(reference, *kind, name))
     }
+
     pub(crate) fn register(
         &mut self,
         spec: &CapabilitySpec,
         handler: Handler,
         allow_replace: &[String],
     ) -> Result<()> {
-        if matches!(spec.mode, Mode::Contribute | Mode::Decorate) && spec.kind != Kind::Transform {
+        if matches!(
+            spec.mode,
+            CompositionMode::Contribute | CompositionMode::Decorate
+        ) && spec.kind != CapabilityKind::Transform
+        {
             bail!("contribute and decorate are supported only for transforms");
         }
         let target = spec.target.as_deref().unwrap_or(&spec.name).to_owned();
         let key = (spec.kind, target.clone());
         match spec.mode {
-            Mode::Provide => {
+            CompositionMode::Provide => {
                 ensure!(
                     !self.primary.contains_key(&key),
                     "capability already provided: {target}"
                 );
                 self.primary.insert(key, handler);
             }
-            Mode::Replace => {
+            CompositionMode::Replace => {
                 ensure!(
                     self.primary.contains_key(&key),
                     "cannot replace missing capability: {target}"
@@ -154,39 +176,44 @@ impl Registry {
                 );
                 self.primary.insert(key, handler);
             }
-            Mode::Contribute => {
+            CompositionMode::Contribute => {
                 ensure!(
                     self.primary.contains_key(&key),
                     "cannot contribute to missing capability: {target}"
                 );
                 self.contributors.entry(target).or_default().push(handler);
             }
-            Mode::Decorate => {
+            CompositionMode::Decorate => {
                 ensure!(
                     self.primary.contains_key(&key),
                     "cannot decorate missing capability: {target}"
                 );
-                let entries = self.decorators.entry(target).or_default();
-                ensure!(
-                    !entries.contains_key(&spec.name),
-                    "duplicate decorator: {}",
-                    spec.name
-                );
-                entries.insert(spec.name.clone(), (spec.clone(), handler));
+                match self
+                    .decorators
+                    .entry(target)
+                    .or_default()
+                    .entry(spec.name.clone())
+                {
+                    Entry::Occupied(_) => bail!("duplicate decorator: {}", spec.name),
+                    Entry::Vacant(entry) => {
+                        entry.insert((spec.clone(), handler));
+                    }
+                }
             }
         }
         Ok(())
     }
-    pub(crate) fn steps(&self, kind: Kind, name: &str) -> Result<Vec<Step>> {
+
+    pub(crate) fn steps(&self, kind: CapabilityKind, name: &str) -> Result<Vec<Step>> {
         let base = self
             .primary
             .get(&(kind, name.into()))
             .with_context(|| format!("unknown {}: {name}", kind.as_str()))?;
         let mut out = vec![Step {
             handler: base.clone(),
-            mode: Mode::Provide,
+            mode: CompositionMode::Provide,
         }];
-        if kind != Kind::Transform {
+        if kind != CapabilityKind::Transform {
             return Ok(out);
         }
         if let Some(decorators) = self.decorators.get(name) {
@@ -211,28 +238,30 @@ impl Registry {
             for name in graph.order()? {
                 out.push(Step {
                     handler: decorators[&name].1.clone(),
-                    mode: Mode::Decorate,
+                    mode: CompositionMode::Decorate,
                 });
             }
         }
         for handler in self.contributors.get(name).into_iter().flatten() {
             out.push(Step {
                 handler: handler.clone(),
-                mode: Mode::Contribute,
+                mode: CompositionMode::Contribute,
             });
         }
         Ok(out)
     }
+
     pub(crate) fn validate(&self) -> Result<()> {
         for name in self.decorators.keys() {
-            self.steps(Kind::Transform, name)?;
+            self.steps(CapabilityKind::Transform, name)?;
         }
         Ok(())
     }
+
     pub(crate) fn validators(&self) -> Vec<String> {
         self.primary
             .keys()
-            .filter(|(kind, _)| *kind == Kind::Validator)
+            .filter(|(kind, _)| *kind == CapabilityKind::Validator)
             .map(|(_, name)| name.clone())
             .collect()
     }
@@ -243,6 +272,7 @@ pub(crate) struct Package {
     pub(crate) manifest: ExtensionManifest,
     pub(crate) allow_replace: Vec<String>,
 }
+
 pub(crate) fn discover(root: &Path, config: &Config) -> Result<Vec<Package>> {
     let installed = Installer::new(root)?.list()?;
     let mut candidates: Vec<_> = installed
@@ -259,28 +289,33 @@ pub(crate) fn discover(root: &Path, config: &Config) -> Result<Vec<Package>> {
             .canonicalize()?;
         candidates.push((path, source.allow_replace.clone()));
     }
-    let mut packages = BTreeMap::new();
+    let mut packages: BTreeMap<String, Package> = BTreeMap::new();
     for (path, approval) in candidates {
         let manifest = load_manifest(&path.join("insitu-extension.toml"))?;
-        if let Some(previous) = packages.get_mut(&manifest.name) {
-            let previous: &mut Package = previous;
-            ensure!(
-                previous.path == path,
-                "multiple packages named {}",
-                manifest.name
-            );
-            previous.allow_replace.extend(approval);
-        } else {
-            packages.insert(
-                manifest.name.clone(),
-                Package {
+        match packages.entry(manifest.name.clone()) {
+            Entry::Occupied(mut entry) => {
+                ensure!(
+                    entry.get().path == path,
+                    "multiple packages named {}",
+                    manifest.name
+                );
+                entry.get_mut().allow_replace.extend(approval);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(Package {
                     path,
                     manifest,
                     allow_replace: approval,
-                },
-            );
+                });
+            }
         }
     }
+    order(packages)
+}
+
+/// Packages in dependency order, after checking that each dependency is present
+/// at a compatible version and each capability has exactly one provider.
+fn order(mut packages: BTreeMap<String, Package>) -> Result<Vec<Package>> {
     let builtins = Registry::builtins();
     let mut graph = Graph::default();
     for (name, package) in &packages {
@@ -298,12 +333,7 @@ pub(crate) fn discover(root: &Path, config: &Config) -> Result<Vec<Package>> {
             } else if !builtins.contains(&dep.name) {
                 let providers: Vec<_> = packages
                     .iter()
-                    .filter(|(_, p)| {
-                        p.manifest.capabilities.iter().any(|s| {
-                            let n = s.target.as_ref().unwrap_or(&s.name);
-                            dep.name == *n || dep.name == format!("{}:{n}", s.kind.as_str())
-                        })
-                    })
+                    .filter(|(_, p)| provides(&p.manifest, &dep.name))
                     .map(|(n, _)| n)
                     .collect();
                 ensure!(
@@ -316,15 +346,15 @@ pub(crate) fn discover(root: &Path, config: &Config) -> Result<Vec<Package>> {
             }
         }
     }
-    let mut ordered = Vec::new();
-    for name in graph.order()? {
-        ordered.push(
+    graph
+        .order()?
+        .into_iter()
+        .map(|name| {
             packages
                 .remove(&name)
-                .context("missing package after ordering")?,
-        );
-    }
-    Ok(ordered)
+                .context("missing package after ordering")
+        })
+        .collect()
 }
 
 pub(crate) struct Process {
@@ -332,6 +362,7 @@ pub(crate) struct Process {
     pub(crate) peer: Peer,
     child: Child,
 }
+
 impl Process {
     pub(crate) fn spawn(
         package: &Package,
@@ -373,6 +404,7 @@ impl Process {
             child,
         })
     }
+
     pub(crate) fn verify(&self, result: &InitializeResult) -> Result<()> {
         ensure!(
             result.name == self.manifest.name && result.version == self.manifest.version,
@@ -402,6 +434,7 @@ impl Process {
         }
         Ok(())
     }
+
     pub(crate) async fn close(&mut self) {
         let _ = self
             .peer
@@ -420,16 +453,28 @@ impl Process {
         }
     }
 }
+
 fn python_interpreter() -> String {
     if let Ok(value) = std::env::var("INSITU_PYTHON") {
         return value;
     }
-    if let Some(root) = std::env::var_os("VIRTUAL_ENV") {
-        let candidate = PathBuf::from(root).join(if cfg!(windows) {
-            "Scripts/python.exe"
-        } else {
-            "bin/python"
-        });
+    let (scripts, python) = if cfg!(windows) {
+        ("Scripts", "python.exe")
+    } else {
+        ("bin", "python")
+    };
+    // The active virtualenv, then the one a wheel installed this binary into,
+    // which is where the Python engine's own interpreter would have been.
+    let active = std::env::var_os("VIRTUAL_ENV").map(|root| PathBuf::from(root).join(scripts));
+    let installed = std::env::current_exe().ok().and_then(|exe| {
+        let dir = exe.parent()?;
+        dir.parent()?
+            .join("pyvenv.cfg")
+            .is_file()
+            .then(|| dir.to_path_buf())
+    });
+    for dir in active.into_iter().chain(installed) {
+        let candidate = dir.join(python);
         if candidate.is_file() {
             return candidate.to_string_lossy().into_owned();
         }
@@ -460,6 +505,7 @@ pub(crate) fn resource_allowed(resource: &str, permissions: &[String]) -> bool {
     }
     false
 }
+
 fn matches_pattern(value: &str, pattern: &str) -> bool {
     let matches = |pattern: &str| {
         globset::GlobBuilder::new(pattern)
@@ -470,9 +516,11 @@ fn matches_pattern(value: &str, pattern: &str) -> bool {
     };
     matches(pattern) || pattern.strip_prefix("**/").is_some_and(matches)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn permissions_are_narrow() {
         let permissions = vec!["fs:read:**/*.md".into()];
@@ -481,6 +529,7 @@ mod tests {
         assert!(!resource_allowed("fs:file:secret.txt", &permissions));
         assert!(!resource_allowed("git://HEAD", &permissions));
     }
+
     #[test]
     fn missing_replacement_approval_fails() {
         let mut registry = Registry::builtins();

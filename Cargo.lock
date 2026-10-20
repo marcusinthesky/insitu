@@ -594,7 +594,6 @@ dependencies = [
  "insitu-core",
  "notify",
  "serde_json",
- "tempfile",
  "tokio",
 ]
 

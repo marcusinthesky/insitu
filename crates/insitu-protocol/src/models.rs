@@ -11,12 +11,15 @@ pub type Options = Map<String, Value>;
 fn protocol_one() -> u8 {
     1
 }
+
 fn dot() -> String {
     ".".into()
 }
+
 fn star() -> String {
     "*".into()
 }
+
 fn deserialize_protocol<'de, D: Deserializer<'de>>(de: D) -> Result<u8, D::Error> {
     let version = u8::deserialize(de)?;
     if version == 1 {
@@ -39,6 +42,7 @@ pub struct Location {
     #[serde(default)]
     pub depth: usize,
 }
+
 impl Location {
     pub fn from_path(path: &str) -> Self {
         let directory = path.rsplit_once('/').map_or("", |(dir, _)| dir).to_owned();
@@ -77,6 +81,7 @@ pub struct Diagnostic {
     #[serde(default)]
     pub code: Option<String>,
 }
+
 impl Diagnostic {
     pub fn error(message: impl Into<String>) -> Self {
         Self {
@@ -99,7 +104,15 @@ pub enum CapabilityKind {
     Renderer,
     Validator,
 }
+
 impl CapabilityKind {
+    pub const ALL: [Self; 4] = [
+        Self::Resource,
+        Self::Transform,
+        Self::Renderer,
+        Self::Validator,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Resource => "resource",
@@ -108,6 +121,8 @@ impl CapabilityKind {
             Self::Validator => "validator",
         }
     }
+
+    /// The host method that invokes capabilities of this kind.
     pub fn method(self) -> &'static str {
         match self {
             Self::Resource => "insitu.resource",
@@ -115,6 +130,11 @@ impl CapabilityKind {
             Self::Renderer => "insitu.render",
             Self::Validator => "insitu.validate",
         }
+    }
+
+    /// The kind invoked by a host method such as `insitu.transform`.
+    pub fn from_method(method: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.method() == method)
     }
 }
 
@@ -235,6 +255,19 @@ pub struct InvocationRequest {
     pub trace: Vec<String>,
 }
 
+impl InvocationRequest {
+    /// A request with no input value and an empty trace.
+    pub fn new(name: impl Into<String>, options: Options, location: Location) -> Self {
+        Self {
+            name: name.into(),
+            options,
+            location,
+            value: Value::Null,
+            trace: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InvocationResult {
@@ -274,6 +307,7 @@ pub struct ReconcileReport {
     pub diagnostics: Vec<Diagnostic>,
     pub elapsed_ms: f64,
 }
+
 impl ReconcileReport {
     pub fn ok(&self) -> bool {
         !self
@@ -281,6 +315,7 @@ impl ReconcileReport {
             .iter()
             .any(|d| d.severity == Severity::Error)
     }
+
     pub fn hard_errors(&self) -> bool {
         self.diagnostics
             .iter()
@@ -291,6 +326,7 @@ impl ReconcileReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn location_matches_python() {
         let l = Location::from_path("docs/tasks/a.md");
@@ -298,6 +334,7 @@ mod tests {
         assert_eq!(l.depth, 2);
         assert_eq!(Location::from_path("a.md").depth, 0);
     }
+
     #[test]
     fn boundary_rejects_unknown_fields() {
         assert!(
@@ -307,6 +344,7 @@ mod tests {
             .is_err()
         );
     }
+
     #[test]
     fn handshake_rejects_future_protocol() {
         assert!(

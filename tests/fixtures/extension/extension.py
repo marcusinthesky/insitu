@@ -1,4 +1,4 @@
-"""An actual Python extension used by both protocol and native-host tests."""
+"""A real Python extension, used by the protocol tests."""
 
 from insitu.sdk import Context, Extension
 from insitu.types import Diagnostic, Severity

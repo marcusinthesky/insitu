@@ -1,6 +1,11 @@
 //! Stage first, validate snapshots, then atomically replace each file.
 use anyhow::{Context, Result, bail, ensure};
-use std::{fs, io::Write, path::PathBuf};
+use std::{
+    collections::BTreeSet,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 use tempfile::NamedTempFile;
 
 /// Both modes compute the same changes. Check never commits them.
@@ -12,20 +17,21 @@ pub enum Mode {
 
 /// A compare-before-write update. Original bytes are also a rollback image.
 #[derive(Clone, Debug)]
-pub struct FileChange {
-    pub path: PathBuf,
-    pub original: Vec<u8>,
-    pub replacement: String,
+pub(crate) struct FileChange {
+    pub(crate) path: PathBuf,
+    pub(crate) original: Vec<u8>,
+    pub(crate) replacement: String,
 }
 
 #[derive(Default, Debug)]
-pub struct ChangeSet {
-    pub files: Vec<FileChange>,
+pub(crate) struct ChangeSet {
+    pub(crate) files: Vec<FileChange>,
 }
+
 impl ChangeSet {
     /// Validate all inputs before producing any authored-file mutation.
-    pub fn validate(&self) -> Result<()> {
-        let mut paths = std::collections::BTreeSet::new();
+    fn validate(&self) -> Result<()> {
+        let mut paths = BTreeSet::new();
         for change in &self.files {
             ensure!(
                 paths.insert(change.path.clone()),
@@ -48,7 +54,7 @@ impl ChangeSet {
 
     /// Stage every file on its destination filesystem. Rename failure attempts
     /// rollback. This is not a crash-atomic transaction across multiple files.
-    pub fn commit(&self) -> Result<()> {
+    pub(crate) fn commit(&self) -> Result<()> {
         self.validate()?;
         let mut staged = Vec::new();
         for change in &self.files {
@@ -61,7 +67,7 @@ impl ChangeSet {
                 bail!(
                     "document changed before commit: {}; rollback: {}",
                     change.path.display(),
-                    rollback.map_or_else(|e| e.to_string(), |_| "complete".into())
+                    rollback.map_or_else(|e| e.to_string(), |()| "complete".into())
                 );
             }
             if let Err(error) = temporary.persist(&change.path) {
@@ -70,7 +76,7 @@ impl ChangeSet {
                     "replace {}: {}; rollback: {}",
                     change.path.display(),
                     error.error,
-                    rollback.map_or_else(|e| e.to_string(), |_| "complete".into())
+                    rollback.map_or_else(|e| e.to_string(), |()| "complete".into())
                 );
             }
         }
@@ -91,14 +97,18 @@ impl ChangeSet {
         Ok(())
     }
 }
-fn stage(path: &std::path::Path, content: &[u8]) -> Result<NamedTempFile> {
+
+/// Write `content` to a temporary file beside `path`, keeping the permissions
+/// of any existing file. Persisting the result replaces `path` atomically.
+pub(crate) fn stage(path: &Path, content: &[u8]) -> Result<NamedTempFile> {
     let parent = path.parent().context("output has no parent")?;
     let mut file = tempfile::Builder::new()
         .prefix(".insitu-")
         .suffix(".tmp")
         .tempfile_in(parent)?;
-    file.as_file()
-        .set_permissions(fs::metadata(path)?.permissions())?;
+    if let Ok(metadata) = fs::metadata(path) {
+        file.as_file().set_permissions(metadata.permissions())?;
+    }
     file.write_all(content)?;
     file.as_file().sync_all()?;
     Ok(file)
@@ -107,6 +117,7 @@ fn stage(path: &std::path::Path, content: &[u8]) -> Result<NamedTempFile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn stale_input_blocks_all_writes() {
         let dir = tempfile::tempdir().unwrap();
@@ -131,6 +142,7 @@ mod tests {
         assert!(changes.commit().is_err());
         assert_eq!(fs::read_to_string(a).unwrap(), "old");
     }
+
     #[test]
     fn atomic_replace_preserves_contents() {
         let dir = tempfile::tempdir().unwrap();

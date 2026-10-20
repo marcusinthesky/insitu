@@ -12,14 +12,13 @@ mod index;
 mod installer;
 mod patch;
 mod paths;
+mod plan;
+mod policy;
 mod project;
 mod values;
 
-pub use config::{
-    Config, ExtensionSource, Paths, Sources, Watch, find_project, initialize_project,
-};
-pub use document::{Document, Region, parse_regions, source_text};
-pub use insitu_protocol::{Diagnostic, ReconcileReport, Severity};
+pub use config::{find_project, initialize_project};
+pub use insitu_protocol::{ReconcileReport, Severity};
 pub use installer::{InstalledExtension, Installer};
-pub use patch::{ChangeSet, FileChange, Mode};
+pub use patch::Mode;
 pub use project::Project;

@@ -1,20 +1,21 @@
 //! Explicit installation; merely opening a project never downloads packages.
 use crate::{
-    extensions::{BUILTIN_PACKAGES, Registry, check_version, load_manifest},
+    extensions::{BUILTIN_PACKAGES, Registry, check_version, load_manifest, provides},
     graph::Graph,
-    paths,
+    patch, paths,
 };
 use anyhow::{Context, Result, bail, ensure};
 use insitu_protocol::{ExtensionManifest, LockedExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+    fmt::Write as _,
     fs,
-    io::Write,
     path::{Path, PathBuf},
     process::Command,
 };
+
 const IGNORED: &[&str] = &[".git", ".insitu", "__pycache__", "node_modules", "target"];
 
 /// A verified installed extension and its original v1 lock record.
@@ -24,6 +25,7 @@ pub struct InstalledExtension {
     pub path: PathBuf,
     pub lock: LockedExtension,
 }
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LockFile {
@@ -37,33 +39,17 @@ pub struct Installer {
     root: PathBuf,
     destination: PathBuf,
 }
+
 impl Installer {
     pub fn new(root: &Path) -> Result<Self> {
         let root = root.canonicalize()?;
         let destination = paths::inside_for_write(&root, ".insitu/extensions")?;
         Ok(Self { root, destination })
     }
+
     /// Validate content hashes before returning packages in dependency order.
     pub fn list(&self) -> Result<Vec<InstalledExtension>> {
-        let lock_path = self.root.join("insitu.lock");
-        let lock = if lock_path.is_file() {
-            toml::from_str::<LockFile>(&fs::read_to_string(lock_path)?)?
-        } else {
-            LockFile {
-                version: 1,
-                extensions: vec![],
-            }
-        };
-        ensure!(lock.version == 1, "unsupported extension lock version");
-        let mut records = BTreeMap::new();
-        for record in lock.extensions {
-            ensure!(
-                !records.contains_key(&record.name),
-                "duplicate locked extension: {}",
-                record.name
-            );
-            records.insert(record.name.clone(), record);
-        }
+        let mut records = self.read_lock()?;
         let mut installed = BTreeMap::new();
         if self.destination.exists() {
             for entry in fs::read_dir(&self.destination)? {
@@ -118,9 +104,39 @@ impl Installer {
             .collect()
     }
 
+    /// Lock records by name; a missing `insitu.lock` locks nothing.
+    fn read_lock(&self) -> Result<BTreeMap<String, LockedExtension>> {
+        let lock_path = self.root.join("insitu.lock");
+        let lock = if lock_path.is_file() {
+            toml::from_str::<LockFile>(&fs::read_to_string(lock_path)?)?
+        } else {
+            LockFile {
+                version: 1,
+                extensions: vec![],
+            }
+        };
+        ensure!(lock.version == 1, "unsupported extension lock version");
+        let mut records = BTreeMap::new();
+        for record in lock.extensions {
+            match records.entry(record.name.clone()) {
+                Entry::Occupied(entry) => bail!("duplicate locked extension: {}", entry.key()),
+                Entry::Vacant(entry) => {
+                    entry.insert(record);
+                }
+            }
+        }
+        Ok(records)
+    }
+
     /// Install a package and its source-addressable dependencies. Publication and
     /// extension execution are never part of installation.
     pub fn add(&self, source: &str, version: Option<&str>) -> Result<InstalledExtension> {
+        // Snapshot both files before resolving, which may clone: an edit made
+        // during installation then aborts it instead of being overwritten.
+        let config_path = self.root.join("insitu.toml");
+        let lock_path = self.root.join("insitu.lock");
+        let original_config = fs::read(&config_path)?;
+        let original_lock = read_optional(&lock_path)?;
         let existing: BTreeMap<_, _> = self
             .list()?
             .into_iter()
@@ -146,29 +162,8 @@ impl Installer {
             version: 1,
             extensions: records,
         })?;
-        let config_path = self.root.join("insitu.toml");
-        let original_config = fs::read(&config_path)?;
-        let mut config = String::from_utf8(original_config.clone())?;
-        let parsed: toml::Value = toml::from_str(&config)?;
-        let configured: BTreeSet<_> = parsed
-            .get("extensions")
-            .and_then(toml::Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|v| v.get("path").and_then(toml::Value::as_str))
-            .map(str::to_owned)
-            .collect();
-        for item in packages.values() {
-            let relative = paths::relative_name(&self.root, &item.path)?;
-            if !configured.contains(&relative) {
-                config.push_str(&format!(
-                    "\n[[extensions]]\npath = {}\n",
-                    toml::Value::String(relative)
-                ));
-            }
-        }
-        let lock_path = self.root.join("insitu.lock");
-        let original_lock = read_optional(&lock_path)?;
+        let config =
+            self.with_extension_paths(String::from_utf8(original_config.clone())?, packages)?;
         ensure!(
             fs::read(&config_path)? == original_config
                 && read_optional(&lock_path)? == original_lock,
@@ -191,34 +186,21 @@ impl Installer {
             Ok(())
         })();
         if let Err(error) = result {
-            let mut rollback_errors = Vec::new();
-            for path in moved {
-                if let Err(error) = fs::remove_dir_all(path) {
-                    rollback_errors.push(error.to_string());
-                }
-            }
-            for (path, before, after) in [
-                (&config_path, Some(original_config), config.as_bytes()),
-                (&lock_path, original_lock, lock.as_bytes()),
-            ] {
-                // Do not overwrite an unrelated concurrent edit while rolling back.
-                if read_optional(path)?.as_deref() == Some(after) {
-                    let reverted = match before {
-                        Some(bytes) => write_atomic(path, &bytes),
-                        None => fs::remove_file(path).map_err(Into::into),
-                    };
-                    if let Err(error) = reverted {
-                        rollback_errors.push(error.to_string());
-                    }
-                }
-            }
+            let written = [
+                Written {
+                    path: &config_path,
+                    before: Some(original_config),
+                    after: config.as_bytes(),
+                },
+                Written {
+                    path: &lock_path,
+                    before: original_lock,
+                    after: lock.as_bytes(),
+                },
+            ];
             bail!(
                 "installation failed: {error:#}; rollback: {}",
-                if rollback_errors.is_empty() {
-                    "completed".into()
-                } else {
-                    rollback_errors.join("; ")
-                }
+                rollback(&moved, written)
             );
         }
         packages
@@ -226,7 +208,37 @@ impl Installer {
             .cloned()
             .context("installed package disappeared")
     }
+
+    /// The configuration text plus an `[[extensions]]` entry for each package
+    /// it does not list yet.
+    fn with_extension_paths(
+        &self,
+        mut config: String,
+        packages: &BTreeMap<String, InstalledExtension>,
+    ) -> Result<String> {
+        let parsed: toml::Value = toml::from_str(&config)?;
+        let configured: BTreeSet<_> = parsed
+            .get("extensions")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.get("path").and_then(toml::Value::as_str))
+            .map(str::to_owned)
+            .collect();
+        for item in packages.values() {
+            let relative = paths::relative_name(&self.root, &item.path)?;
+            if !configured.contains(&relative) {
+                writeln!(
+                    config,
+                    "\n[[extensions]]\npath = {}",
+                    toml::Value::String(relative)
+                )?;
+            }
+        }
+        Ok(config)
+    }
 }
+
 struct Resolver {
     staging: PathBuf,
     destination: PathBuf,
@@ -235,6 +247,7 @@ struct Resolver {
     visiting: BTreeSet<String>,
     graph: Graph,
 }
+
 impl Resolver {
     fn resolve(&mut self, source: &str, constraint: &str, parent: Option<&str>) -> Result<String> {
         let checkout = Checkout::open(source)?;
@@ -253,34 +266,7 @@ impl Resolver {
             self.visiting.insert(name.clone()),
             "extension dependency cycle includes {name}"
         );
-        for dependency in &manifest.dependencies {
-            if !dependency.capability && BUILTIN_PACKAGES.contains(&dependency.name.as_str()) {
-                continue;
-            }
-            if let Some(existing) = self.packages.get(&dependency.name) {
-                check_version(&existing.manifest, &dependency.version)?;
-                self.graph.edge(&name, &dependency.name)?;
-                continue;
-            }
-            if let Some(raw) = &dependency.source {
-                let local = checkout.path.join(raw);
-                let source = if local.exists() {
-                    paths::posix(&local)?
-                } else {
-                    raw.clone()
-                };
-                let resolved = self.resolve(&source, &dependency.version, Some(&name))?;
-                if !dependency.capability {
-                    ensure!(
-                        resolved == dependency.name,
-                        "dependency source identity mismatch: expected {}, got {resolved}",
-                        dependency.name
-                    );
-                }
-            } else if !dependency.capability {
-                bail!("dependency {} needs a source", dependency.name);
-            }
-        }
+        self.resolve_dependencies(&name, &manifest, &checkout.path)?;
         let slug = slug(&name)?;
         ensure!(
             !self
@@ -318,18 +304,54 @@ impl Resolver {
         self.new_names.insert(name.clone());
         Ok(name)
     }
+
+    /// Resolve the dependencies `name` declares, sourcing them relative to its checkout.
+    fn resolve_dependencies(
+        &mut self,
+        name: &str,
+        manifest: &ExtensionManifest,
+        checkout: &Path,
+    ) -> Result<()> {
+        for dependency in &manifest.dependencies {
+            if !dependency.capability && BUILTIN_PACKAGES.contains(&dependency.name.as_str()) {
+                continue;
+            }
+            if let Some(existing) = self.packages.get(&dependency.name) {
+                check_version(&existing.manifest, &dependency.version)?;
+                self.graph.edge(name, &dependency.name)?;
+                continue;
+            }
+            if let Some(raw) = &dependency.source {
+                let local = checkout.join(raw);
+                let source = if local.exists() {
+                    paths::posix(&local)?
+                } else {
+                    raw.clone()
+                };
+                let resolved = self.resolve(&source, &dependency.version, Some(name))?;
+                if !dependency.capability {
+                    ensure!(
+                        resolved == dependency.name,
+                        "dependency source identity mismatch: expected {}, got {resolved}",
+                        dependency.name
+                    );
+                }
+            } else if !dependency.capability {
+                bail!("dependency {} needs a source", dependency.name);
+            }
+        }
+        Ok(())
+    }
+
     fn validate_capabilities(&self) -> Result<()> {
         let builtins = Registry::builtins();
         for item in self.packages.values() {
             for dependency in item.manifest.dependencies.iter().filter(|d| d.capability) {
                 let found = builtins.contains(&dependency.name)
-                    || self.packages.values().any(|p| {
-                        p.manifest.capabilities.iter().any(|s| {
-                            let name = s.target.as_ref().unwrap_or(&s.name);
-                            dependency.name == *name
-                                || dependency.name == format!("{}:{name}", s.kind.as_str())
-                        })
-                    });
+                    || self
+                        .packages
+                        .values()
+                        .any(|p| provides(&p.manifest, &dependency.name));
                 ensure!(
                     found,
                     "missing capability dependency: {} -> {}",
@@ -341,11 +363,13 @@ impl Resolver {
         Ok(())
     }
 }
+
 struct Checkout {
     path: PathBuf,
     revision: Option<String>,
     _temporary: Option<tempfile::TempDir>,
 }
+
 impl Checkout {
     fn open(source: &str) -> Result<Self> {
         let source_path = if let Some(relative) = source.strip_prefix("~/") {
@@ -354,20 +378,31 @@ impl Checkout {
             PathBuf::from(source)
         };
         if source_path.exists() {
-            let path = source_path.canonicalize()?;
-            ensure!(path.is_dir(), "extension source is not a directory");
-            let revision = git2::Repository::discover(&path).ok().and_then(|r| {
-                r.head()
-                    .ok()
-                    .and_then(|h| h.target())
-                    .map(|oid| oid.to_string())
-            });
-            return Ok(Self {
-                path,
-                revision,
-                _temporary: None,
-            });
+            Self::local(&source_path)
+        } else {
+            Self::clone(source)
         }
+    }
+
+    /// An existing directory, with its Git revision if it is inside a repository.
+    fn local(source: &Path) -> Result<Self> {
+        let path = source.canonicalize()?;
+        ensure!(path.is_dir(), "extension source is not a directory");
+        let revision = git2::Repository::discover(&path).ok().and_then(|r| {
+            r.head()
+                .ok()
+                .and_then(|h| h.target())
+                .map(|oid| oid.to_string())
+        });
+        Ok(Self {
+            path,
+            revision,
+            _temporary: None,
+        })
+    }
+
+    /// A temporary clone of a `github:owner/repo@rev` or `[git:]url#rev` source.
+    fn clone(source: &str) -> Result<Self> {
         let (url, revision) = if let Some(raw) = source.strip_prefix("github:") {
             let (repository, revision) = raw
                 .split_once('@')
@@ -418,6 +453,44 @@ impl Checkout {
         })
     }
 }
+
+/// A file an installation writes, with its bytes before (if it existed) and after.
+struct Written<'a> {
+    path: &'a Path,
+    before: Option<Vec<u8>>,
+    after: &'a [u8],
+}
+
+/// Undo a failed installation: remove moved packages and restore each written
+/// file unless something else changed it since. Returns a summary.
+fn rollback(moved: &[PathBuf], written: [Written<'_>; 2]) -> String {
+    let mut errors = Vec::new();
+    for path in moved {
+        if let Err(error) = fs::remove_dir_all(path) {
+            errors.push(error.to_string());
+        }
+    }
+    for file in written {
+        // Do not overwrite an unrelated concurrent edit while rolling back.
+        let reverted = match read_optional(file.path) {
+            Ok(current) if current.as_deref() == Some(file.after) => match file.before {
+                Some(bytes) => write_atomic(file.path, &bytes),
+                None => fs::remove_file(file.path).map_err(Into::into),
+            },
+            Ok(_) => Ok(()),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = reverted {
+            errors.push(error.to_string());
+        }
+    }
+    if errors.is_empty() {
+        "completed".into()
+    } else {
+        errors.join("; ")
+    }
+}
+
 fn package_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     for entry in walkdir::WalkDir::new(root)
@@ -440,6 +513,7 @@ fn package_files(root: &Path) -> Result<Vec<PathBuf>> {
     files.sort();
     Ok(files)
 }
+
 fn copy_package(source: &Path, target: &Path) -> Result<()> {
     fs::create_dir_all(target)?;
     for file in package_files(source)? {
@@ -449,6 +523,7 @@ fn copy_package(source: &Path, target: &Path) -> Result<()> {
     }
     Ok(())
 }
+
 fn tree_hash(root: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     for file in package_files(root)? {
@@ -457,6 +532,7 @@ fn tree_hash(root: &Path) -> Result<String> {
     }
     Ok(hex::encode(hash.finalize()))
 }
+
 fn slug(name: &str) -> Result<String> {
     ensure!(
         !name.is_empty()
@@ -472,6 +548,7 @@ fn slug(name: &str) -> Result<String> {
     );
     Ok(slug)
 }
+
 fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
@@ -479,24 +556,20 @@ fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
         Err(error) => Err(error.into()),
     }
 }
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     ensure!(
         !fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()),
         "refusing symlink destination"
     );
-    let mut temp =
-        tempfile::NamedTempFile::new_in(path.parent().context("destination has no parent")?)?;
-    if let Ok(meta) = fs::metadata(path) {
-        temp.as_file().set_permissions(meta.permissions())?;
-    }
-    temp.write_all(bytes)?;
-    temp.as_file().sync_all()?;
-    temp.persist(path)?;
+    patch::stage(path, bytes)?.persist(path)?;
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn hashing_matches_original_concatenation() {
         let root = tempfile::tempdir().unwrap();
@@ -506,6 +579,7 @@ mod tests {
             hex::encode(Sha256::digest(b"ab"))
         );
     }
+
     #[test]
     fn install_and_detect_tampering() {
         let root = tempfile::tempdir().unwrap();

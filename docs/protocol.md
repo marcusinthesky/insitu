@@ -5,7 +5,8 @@ is preceded by `Content-Length: <byte length>\r\n\r\n`. Standard output is reser
 for protocol frames; logs go to standard error. Both peers can issue requests while
 awaiting responses. Requests carry IDs; notifications do not produce replies.
 
-The candidate enforces a 16 MiB payload cap and an additional 8 KiB header cap.
+The Rust and Python implementations enforce a 16 MiB payload cap and an additional
+8 KiB header cap.
 Duplicate Content-Length headers and incomplete frames are rejected. Malformed
 JSON terminates a connection. The host's default request timeout is 30 seconds;
 shutdown requests use a shorter timeout. Request cancellation removes local pending

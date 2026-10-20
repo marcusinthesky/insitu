@@ -65,6 +65,13 @@ pub(crate) fn posix(path: &Path) -> Result<String> {
         .context("non-UTF-8 paths are not supported by the v1 JSON protocol")?
         .replace('\\', "/"))
 }
+
 pub(crate) fn relative_name(root: &Path, path: &Path) -> Result<String> {
     posix(path.strip_prefix(root).context("path is outside project")?)
+}
+
+/// Markdown is recognized by its `.md` extension, ignoring case.
+pub(crate) fn is_markdown(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
 }
