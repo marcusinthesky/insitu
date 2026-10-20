@@ -33,7 +33,7 @@ bindings = "bin"
 python-source = "python"
 python-packages = ["insitu"]
 strip = true
-include = ["LICENSE", "docs/**", "tests/fixtures/**", "scripts/**", "rust-toolchain.toml"]
+include = ["LICENSE", "docs/**", "tests/fixtures/**", "rust-toolchain.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

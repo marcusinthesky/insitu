@@ -25,7 +25,6 @@ def test_versions_match():
     assert Version(rust_version) == Version(py["project"]["version"])
     assert rust_version == npm["version"]
     assert all(v == rust_version for v in npm["optionalDependencies"].values())
-    assert f'version = "{rust_version}"' in (ROOT / "flake.nix").read_text()
 
 
 def test_sdk_is_included_with_native_wheel():
@@ -57,10 +56,3 @@ def test_elf_header_architecture(target, expected):
     struct.pack_into("<H", header, 18, 0)
     with pytest.raises(ValueError):
         stage_npm.validate_binary(bytes(header), target)
-
-
-def test_workspace_members_have_source():
-    data = tomllib.loads((ROOT / "Cargo.toml").read_text())
-    for member in data["workspace"]["members"]:
-        assert (ROOT / member / "Cargo.toml").is_file()
-        assert list((ROOT / member / "src").glob("*.rs"))

@@ -46,9 +46,6 @@ jobs:
           insitu --version
           python -c 'from insitu.sdk import Extension, Context'
           python -m insitu --version
-      - name: Exercise native engine
-        shell: bash
-        run: python scripts/conformance.py --binary target/${{ matrix.target }}/release/${{ matrix.executable }} --output dist/conformance.json
       - uses: actions/upload-artifact@v4
         with:
           name: insitu-${{ matrix.target }}

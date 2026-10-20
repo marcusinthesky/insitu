@@ -34,5 +34,4 @@ Corresponding permission prefixes are `fs:read:`, `sql:read:`, `resource:read:` 
 perform its own I/O outside the host API.
 
 Inspect `crates/insitu-protocol/src/models.rs` and `python/insitu/types.py` for the
-boundary types. Python tests execute the Python side of this protocol. Rust-to-Python
-compatibility requires the separate native conformance run, which has not run here.
+boundary types. Python tests execute the Python side of this protocol.

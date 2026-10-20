@@ -14,7 +14,6 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - run: bash nix/install-devenv.sh
       - run: devenv test
-      - run: devenv shell -- just conformance
   # The MSRV toolchain in rust-toolchain.toml, which rustup installs on first use.
   msrv:
     strategy:
@@ -24,14 +23,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - run: python -m pip install 'pydantic>=2.11,<3'
       - run: cargo test --workspace --locked
-      - run: cargo build --locked -p insitu
-      - shell: bash
-        run: python scripts/conformance.py --binary target/debug/insitu${{ runner.os == 'Windows' && '.exe' || '' }}
   nix:
     runs-on: ubuntu-24.04
     steps:

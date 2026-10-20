@@ -20,7 +20,7 @@
         in
         pkgs.rustPlatform.buildRustPackage {
           pname = "insitu";
-          version = "0.2.0-rc.1";
+          inherit ((pkgs.lib.importTOML ./Cargo.toml).workspace.package) version;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
           cargoBuildFlags = [

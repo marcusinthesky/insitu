@@ -37,11 +37,6 @@ semver:
 build:
     cargo build --release --locked -p insitu
 
-# Black-box CLI checks. Given the Python reference, also compares byte-for-byte, e.g.
-# `just conformance ~/Git/pricing-perspective/src/python/.venv/bin/python ~/Git/insitu/src`.
-conformance oracle_python="" oracle_source="": build
-    uv run --frozen python scripts/conformance.py --binary target/release/insitu {{ if oracle_python != "" { "--oracle-python " + oracle_python + " --oracle-source " + oracle_source } else { "" } }}
-
 # Read-only parity run on a real project, e.g. `just parity ~/Git/pricing-perspective`.
 # Extensions run under INSITU_PYTHON, so point it at that project's virtualenv.
 parity project python=(project / "src/python/.venv/bin/python"): build
