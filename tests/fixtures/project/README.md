@@ -1,6 +1,5 @@
 ---
-title: Fixture
-description: "Insitu projection test fixture"
+title: "Project index" # preserve this authored comment
 insitu:
   materializations:
     counts:
@@ -10,23 +9,16 @@ insitu:
         kind: frontmatter
         pointer: /generated/counts
 ---
-
-## Fixture
+# Project
 
 <!-- insitu:begin sql
 id = "tasks"
 model = "open_tasks"
 template = "tasks.md.j2"
 -->
-stale
-<!-- insitu:end -->
 
-<!-- insitu:begin tree
-id = "tree"
-depth = 1
-exclude = [".insitu/**"]
--->
 stale
+
 <!-- insitu:end -->
 
 <!-- insitu:begin include
@@ -34,5 +26,12 @@ id = "snippet"
 path = "snippets/example.py"
 language = "python"
 -->
-stale
 <!-- insitu:end -->
+
+<!-- insitu:begin tree
+id = "tree"
+depth = 1
+-->
+<!-- insitu:end -->
+
+Authored Unicode: 🦀 café.

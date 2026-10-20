@@ -1,0 +1,19 @@
+{
+  "reference_repository": "https://github.com/marcusinthesky/insitu",
+  "reference_commit": "7f3a1b8327a3e14ac9ac2d8a4b25b19fcdab8daa",
+  "reference_project_version": "0.1.1",
+  "reference_license": "MIT",
+  "candidate_version": "0.2.0-rc.1",
+  "protocol_version": 1,
+  "reference_material": "Source and tests were read through the connected GitHub API. Rust source is a new implementation; Python boundary types/SDK preserve the inspected API but are not byte-identical copies.",
+  "verification_limit": "The original Python engine was not executed as an oracle. Native Rust code was not compiled. A differential runner is included for subsequent verification.",
+  "primary_documentation": [
+    "https://www.maturin.rs/bindings.html",
+    "https://www.maturin.rs/config.html",
+    "https://docs.npmjs.com/cli/v11/configuring-npm/package-json/",
+    "https://doc.rust-lang.org/cargo/reference/workspaces.html",
+    "https://docs.rs/crate/rusqlite/0.37.0/features",
+    "https://docs.rs/yaml-edit/latest/yaml_edit/",
+    "https://docs.github.com/en/actions/reference/runners/github-hosted-runners"
+  ]
+}

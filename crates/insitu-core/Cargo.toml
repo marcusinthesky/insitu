@@ -1,0 +1,41 @@
+[package]
+name = "insitu-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Concrete reconciliation engine and built-in capabilities for Insitu"
+readme = "README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+insitu-protocol.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toml.workspace = true
+regex.workspace = true
+ignore.workspace = true
+globset.workspace = true
+walkdir.workspace = true
+minijinja.workspace = true
+minijinja-contrib.workspace = true
+rusqlite.workspace = true
+serde_norway.workspace = true
+yaml-edit.workspace = true
+git2.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+sha1.workspace = true
+hex.workspace = true
+tempfile.workspace = true
+url.workspace = true
+pep440_rs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

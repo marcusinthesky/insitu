@@ -1,2 +1,6 @@
+# Markdown lint configuration.
+# https://github.com/rvben/rumdl
 [global]
+exclude = ["**/.direnv/**", "**/.devenv/**", "target/**", "tests/fixtures/**"]
+# MD013 line-length: prose here wraps to sense, not to a column.
 disable = ["MD013"]

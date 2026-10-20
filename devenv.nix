@@ -1,71 +1,54 @@
-{ config, pkgs, ... }:
-
-let
-  schematter = pkgs.stdenvNoCC.mkDerivation {
-    pname = "schematter";
-    version = "0.1.0";
-    src = pkgs.fetchurl {
-      url = "https://github.com/iwe-org/schematter/releases/download/schematter-v0.1.0/schematter-v0.1.0-x86_64-unknown-linux-gnu.tar.gz";
-      hash = "sha256-hSEglws2SiqFQh9koaMQZUi0nKAI88QwmzCy5N6hLYM=";
-    };
-    dontBuild = true;
-    unpackPhase = ''
-      tar -xzf "$src"
-    '';
-    installPhase = ''
-      install -Dm755 schematter "$out/bin/schematter"
-    '';
-    meta.mainProgram = "schematter";
-  };
-in
+{ pkgs, ... }:
 {
-  name = "insitu";
+  name = "insitu-rust";
 
-  languages.python = {
-    enable = true;
-    package = pkgs.python313;
-    venv.enable = true;
-    uv = {
-      enable = true;
-      sync = {
-        enable = true;
-        allGroups = true;
-      };
-    };
-  };
+  # rustc, cargo, clippy, rustfmt and rust-analyzer from the pinned nixpkgs.
+  # rust-toolchain.toml stays the MSRV toolchain for rustup users and CI's
+  # cross-platform matrix; this shell is the newer development toolchain.
+  languages.rust.enable = true;
 
   packages = with pkgs; [
-    codespell
-    convco
-    deadnix
+    # Native build inputs: vendored libgit2 and bundled SQLite.
+    pkg-config
+    cmake
+    # Rust quality gates and release tooling.
+    cargo-nextest
+    cargo-deny
+    cargo-machete
+    cargo-semver-checks
+    cargo-release
+    cargo-dist
+    maturin
+    # Python SDK and npm launcher.
+    python313
+    uv
+    ruff
+    nodejs
+    # Repository gates.
     git
+    gh
     just
-    just-lsp
-    nixfmt
     prek
-    rumdl
-    schematter
+    convco
+    jq
+    nixfmt
     statix
+    deadnix
     tombi
-    watchexec
+    rumdl
+    codespell
+    lychee
   ];
-
-  processes.tests = {
-    exec = "watchexec --clear --restart --watch src --watch tests --watch pyproject.toml -- just test";
-    cwd = config.git.root;
+  env = {
+    # uv must use this shell's Python, never a downloaded interpreter.
+    UV_PYTHON_DOWNLOADS = "never";
   };
-
-  tasks."quality:check" = {
-    exec = "prek run --all-files";
-    cwd = config.git.root;
-    after = [ "devenv:python:uv" ];
-  };
-
   enterShell = ''
-    prek install
+    uv sync --frozen
+    export PATH="$PWD/.venv/bin:$PATH"
+    if git rev-parse --git-dir >/dev/null 2>&1; then prek install; fi
   '';
-
   enterTest = ''
-    prek run --all-files
+    just check
   '';
 }

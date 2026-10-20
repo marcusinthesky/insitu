@@ -1,0 +1,40 @@
+{% set ns = namespace(open=0, terminal=0, waits=false, target=false, descendants=false, status_width=6, task_width=4, what_width=4, waits_width=8, target_width=6, descendants_width=4) -%}
+{% for row in rows -%}
+{% if row.is_terminal %}{% set ns.terminal = ns.terminal + 1 %}{% else %}{% set ns.open = ns.open + 1 %}{% endif -%}
+{% if row.visible -%}
+{% set what = row.description.split() | join(" ") -%}
+{% if what | length > 72 -%}
+{% set what = what[:72] -%}
+{% if " " in what -%}{% set what = what.rsplit(" ", 1)[0] -%}{% endif -%}
+{% set what = what.rstrip(" ,;:.—-") ~ "…" -%}
+{% endif -%}
+{% set what = what | replace("|", "\\|") -%}
+{% if row.waits_on not in ("", "—") %}{% set ns.waits = true %}{% endif -%}
+{% if row.target != "" %}{% set ns.target = true %}{% endif -%}
+{% if row.open_descendants != "—" %}{% set ns.descendants = true %}{% endif -%}
+{% if row.status | length > ns.status_width %}{% set ns.status_width = row.status | length %}{% endif -%}
+{% if row.task | length > ns.task_width %}{% set ns.task_width = row.task | length %}{% endif -%}
+{% if what | length > ns.what_width %}{% set ns.what_width = what | length %}{% endif -%}
+{% if row.waits_on | length > ns.waits_width %}{% set ns.waits_width = row.waits_on | length %}{% endif -%}
+{% if row.target | length > ns.target_width %}{% set ns.target_width = row.target | length %}{% endif -%}
+{% if row.open_descendants | length > ns.descendants_width %}{% set ns.descendants_width = row.open_descendants | length %}{% endif -%}
+{% endif -%}
+{% endfor -%}
+{% if ns.open + ns.terminal > 0 -%}
+{% if ns.open > 0 -%}
+| {{ "Status".ljust(ns.status_width) }} | {{ "Task".ljust(ns.task_width) }} | {{ "What".ljust(ns.what_width) }}{% if ns.waits %} | {{ "Waits on".ljust(ns.waits_width) }}{% endif %}{% if ns.target %} | {{ "Target".ljust(ns.target_width) }}{% endif %}{% if ns.descendants %} | {{ "Open".ljust(ns.descendants_width) }}{% endif %} |
+| {{ "-" * ns.status_width }} | {{ "-" * ns.task_width }} | {{ "-" * ns.what_width }}{% if ns.waits %} | {{ "-" * ns.waits_width }}{% endif %}{% if ns.target %} | {{ "-" * ns.target_width }}{% endif %}{% if ns.descendants %} | {{ "-" * ns.descendants_width }}{% endif %} |
+{% for row in rows if row.visible -%}
+{% set what = row.description.split() | join(" ") -%}
+{% if what | length > 72 -%}
+{% set what = what[:72] -%}
+{% if " " in what -%}{% set what = what.rsplit(" ", 1)[0] -%}{% endif -%}
+{% set what = what.rstrip(" ,;:.—-") ~ "…" -%}
+{% endif -%}
+{% set what = what | replace("|", "\\|") -%}
+| {{ row.status.ljust(ns.status_width) }} | {{ row.task.ljust(ns.task_width) }} | {{ what.ljust(ns.what_width) }}{% if ns.waits %} | {{ row.waits_on.ljust(ns.waits_width) }}{% endif %}{% if ns.target %} | {{ row.target.ljust(ns.target_width) }}{% endif %}{% if ns.descendants %} | {{ row.open_descendants.ljust(ns.descendants_width) }}{% endif %} |
+{% endfor -%}
+{{ "\n" -}}
+{% endif -%}
+{% endif -%}
+`{{ ns.open }} of {{ ns.open + ns.terminal }} open — {{ ns.terminal }} terminal`

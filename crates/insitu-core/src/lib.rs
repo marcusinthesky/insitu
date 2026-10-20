@@ -1,0 +1,25 @@
+//! A concrete, single-owner document materialization engine.
+//!
+//! Read [`Project::run`] to follow a pass: scan, index, plan, render, prepare,
+//! commit. Domain calculations are synchronous; only process I/O is async.
+mod builtins;
+mod config;
+mod document;
+mod extensions;
+mod git;
+mod graph;
+mod index;
+mod installer;
+mod patch;
+mod paths;
+mod project;
+mod values;
+
+pub use config::{
+    Config, ExtensionSource, Paths, Sources, Watch, find_project, initialize_project,
+};
+pub use document::{Document, Region, parse_regions, source_text};
+pub use insitu_protocol::{Diagnostic, ReconcileReport, Severity};
+pub use installer::{InstalledExtension, Installer};
+pub use patch::{ChangeSet, FileChange, Mode};
+pub use project::Project;

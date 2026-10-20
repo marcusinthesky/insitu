@@ -1,0 +1,27 @@
+name = "conformance"
+version = "1.0.0"
+protocol = 1
+permissions = ["fs:read:**/*.txt"]
+
+[extension]
+command = ["{python}", "extension.py"]
+
+[[capabilities]]
+kind = "transform"
+name = "greeting"
+
+[[capabilities]]
+kind = "transform"
+name = "read-file"
+
+[[capabilities]]
+kind = "resource"
+name = "numbers"
+
+[[capabilities]]
+kind = "renderer"
+name = "join"
+
+[[capabilities]]
+kind = "validator"
+name = "notice"

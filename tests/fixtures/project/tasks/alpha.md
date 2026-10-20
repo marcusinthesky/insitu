@@ -1,6 +1,5 @@
 ---
 title: Alpha
-status: backlog
+status: open
 ---
-
-## Alpha
+# Alpha

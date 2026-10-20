@@ -1,0 +1,18 @@
+{
+  "name": "@marcusinthesky/insitu",
+  "version": "0.2.0-rc.1",
+  "description": "Insitu native document materialization CLI (validation candidate)",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/marcusinthesky/insitu.git" },
+  "engines": { "node": ">=18" },
+  "bin": { "insitu": "bin/insitu.cjs" },
+  "files": ["bin/insitu.cjs", "LICENSE", "README.md"],
+  "publishConfig": { "access": "public", "tag": "next" },
+  "optionalDependencies": {
+    "@marcusinthesky/insitu-linux-x64-gnu": "0.2.0-rc.1",
+    "@marcusinthesky/insitu-linux-arm64-gnu": "0.2.0-rc.1",
+    "@marcusinthesky/insitu-darwin-x64": "0.2.0-rc.1",
+    "@marcusinthesky/insitu-darwin-arm64": "0.2.0-rc.1",
+    "@marcusinthesky/insitu-win32-x64-msvc": "0.2.0-rc.1"
+  }
+}

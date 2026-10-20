@@ -1,0 +1,3 @@
+$ /opt/pyvenv/bin/python -m pytest tests/python -q --junitxml=verification/python-tests.xml
+.....................................................                    [100%]
+53 passed in 13.41s
