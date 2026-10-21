@@ -1,4 +1,4 @@
-# Insitu
+# ![insitu — Markdown in its place.](assets/insitu-logo-animated-tagline.svg)
 
 /ɪn ˈsɪt.uː/ · in-SIT-oo
 

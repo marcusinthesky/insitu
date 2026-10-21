@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="380" height="105" viewBox="0 0 760 210" role="img" aria-labelledby="title desc">
+  <title id="title">insitu animated logo with tagline</title>
+  <desc id="desc">Three stacked black geometric layers animate gently beside the lowercase insitu wordmark, with the tagline "Markdown in its place." beneath.</desc>
+  <g fill="#111111">
+    <g>
+      <path d="M81 13c4-2.5 9-2.5 13 0l52 30c5 3 5 9 0 12L94 85c-4 2.5-9 2.5-13 0L29 55c-5-3-5-9 0-12z" />
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 -8;0 -8;0 0;0 0" keyTimes="0;0.16;0.34;0.53;1" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1;0.4 0 0.2 1;0 0 1 1" dur="4s" repeatCount="indefinite" />
+    </g>
+    <g>
+      <path d="M26 70 81 102c4 2.5 9 2.5 13 0l55-32v16c0 2-1 4-4 6l-51 30c-4 2.5-9 2.5-13 0L30 92c-3-2-4-4-4-6z" />
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 0;0 0;0 0" keyTimes="0;0.16;0.34;0.53;1" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1;0.4 0 0.2 1;0 0 1 1" dur="4s" repeatCount="indefinite" />
+    </g>
+    <g>
+      <path d="M26 108 81 140c4 2.5 9 2.5 13 0l55-32v13c0 3-1 5-4 7l-51 29c-4 2.5-9 2.5-13 0l-51-29c-3-2-4-4-4-7z" transform="translate(0 -13)" />
+      <animateTransform attributeName="transform" type="translate" values="0 0;0 7;0 7;0 0;0 0" keyTimes="0;0.16;0.34;0.53;1" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1;0.4 0 0.2 1;0 0 1 1" dur="4s" repeatCount="indefinite" />
+    </g>
+  </g>
+  <text x="188" y="112" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="108" font-weight="700" letter-spacing="-6">insitu</text>
+  <text x="194" y="149" fill="#111111" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="500" letter-spacing="0.2">Markdown in its place.</text>
+</svg>

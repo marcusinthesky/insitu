@@ -17,6 +17,7 @@ directories_only = true
 insitu/
 ├── .github/
 │   └── workflows/
+├── assets/
 ├── crates/
 │   ├── insitu/
 │   ├── insitu-core/
