@@ -35,9 +35,13 @@
     statix
     deadnix
     tombi
+    # Markdown: rumdl owns format and local links, lychee external links,
+    # schematter document shape; harper-ls is the editor's grammar checker.
     rumdl
     codespell
     lychee
+    harper
+    (callPackage ./nix/schematter.nix { })
   ];
   env = {
     # uv must use this shell's Python, never a downloaded interpreter.
@@ -48,6 +52,8 @@
     export PATH="$PWD/.venv/bin:$PATH"
     if git rev-parse --git-dir >/dev/null 2>&1; then prek install; fi
   '';
+  # `devenv up` keeps every Insitu view current while you edit.
+  processes.insitu.exec = "cargo run --quiet --locked -p insitu -- watch";
   enterTest = ''
     just check
   '';

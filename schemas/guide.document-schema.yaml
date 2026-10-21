@@ -1,0 +1,10 @@
+$schema: https://document-schema.org/draft/2026-06/schema
+description: >-
+  A guide opens with exactly one top-level heading; the README's documentation
+  index (insitu/models/documentation.sql) uses it as the guide's title.
+sections:
+  - header:
+      pattern: ^\S
+    maxContains: 1
+additionalSections: false
+additionalBlocks: false

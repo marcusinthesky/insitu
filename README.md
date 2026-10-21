@@ -1,12 +1,21 @@
 # Insitu
 
-/ɪn ˈsɪt.uː/ · in-SIT-oo · Latin, _in its original place_.
+/ɪn ˈsɪt.uː/ · in-SIT-oo
+
+_adverb, adjective_ — from Latin _in situ_, "in its original place."
+
+1. In the original, natural or intended position.
+2. _Computing._ Keeping computed views where people and agents read them: inside the
+   files themselves.
 
 **Your files are the source of truth. Everything else is a view.**
 
 Insitu is Git-native reactive Markdown. Write knowledge once, as ordinary Markdown
 and front matter; query it with SQL, render it with templates or extensions, and
 Insitu writes the result back into your Markdown files, between comment markers.
+The comment-region idea comes from MagicMarkdown; Insitu adds a SQL index over every
+document, generated front matter, a drift check for CI, and extensions that run as
+separate processes.
 
 The output is not a virtual view. It is Markdown that you commit, diff and review,
 and it reads the same on GitHub, in your editor, in Obsidian, or to an AI agent.
@@ -55,8 +64,8 @@ and the roadmap follows your edits. In CI, `insitu check` fails when any view is
 The table below is an Insitu region. [`insitu/models/documentation.sql`](insitu/models/documentation.sql)
 lists every guide in this repository and
 [`documentation.md.j2`](insitu/templates/documentation.md.j2) renders it; add a
-Markdown file and the next `insitu sync` adds a row. A Git hook runs `insitu check`,
-so this list cannot fall behind the repository.
+Markdown file and the next `insitu sync` adds a row, or `devenv up` adds it as you
+save. A Git hook runs `insitu check`, so this list cannot fall behind the repository.
 
 <!-- insitu:begin sql
 id = "documentation"
@@ -176,7 +185,14 @@ extension wire format.
 [devenv](https://devenv.sh) pins every tool through `devenv.lock`. Install the
 pinned CLI with `bash nix/install-devenv.sh`, then run `direnv allow` or
 `devenv shell`. Entering the shell syncs the Python SDK's dependencies from
-`uv.lock` and installs the prek Git hooks.
+`uv.lock` and installs the prek Git hooks; `devenv up` then runs `insitu watch`, so
+generated regions follow your edits.
+
+The Markdown gates divide the work: rumdl owns formatting and local links, lychee
+external links (on push), schematter document shape
+([`schemas/guide.document-schema.yaml`](schemas/guide.document-schema.yaml)),
+codespell spelling, and `insitu check` generated content. Harper is the editor's
+grammar checker through `harper-ls`, with `just prose` as an advisory pass.
 
 ```sh
 just check        # every gate in .pre-commit-config.yaml, as the hooks run them
@@ -184,6 +200,7 @@ just test         # nextest and doctests
 just lint         # Clippy, warnings denied
 just parity ~/Git/pricing-perspective   # read-only `check` on a real project
 just fmt          # format Rust, Nix, TOML, Markdown, Python and justfiles
+just prose        # advisory Harper grammar pass over tracked Markdown
 ```
 
 `rust-toolchain.toml` is the minimum supported Rust version, which CI tests on

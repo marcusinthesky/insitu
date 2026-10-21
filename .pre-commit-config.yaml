@@ -82,6 +82,11 @@ repos:
         entry: rumdl check
         language: system
         files: \.md$
+      - id: schematter
+        name: schematter (one title heading per guide)
+        entry: schematter validate --schema schemas/guide.document-schema.yaml
+        language: system
+        files: \.md$
       - id: codespell
         name: codespell
         entry: codespell

@@ -9,11 +9,16 @@ check:
 
 fmt:
     cargo fmt --all
-    nixfmt devenv.nix flake.nix
+    nixfmt devenv.nix flake.nix nix/*.nix
     tombi format --offline
     rumdl fmt .
     ruff format
     for f in $(git ls-files --cached --others --exclude-standard | grep -E '(^|/)justfile$'); do just --justfile "$f" --fmt --unstable; done
+
+# Advisory grammar pass over tracked Markdown. Spelling belongs to codespell, and
+# title case and serial commas are not house style; the rest may be false positives.
+prose:
+    git ls-files -z '*.md' | xargs -0 harper-cli lint --no-color --ignore SpellCheck,UseTitleCase,OxfordComma
 
 lint:
     cargo clippy --workspace --all-targets --locked -- -D warnings
