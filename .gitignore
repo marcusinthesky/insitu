@@ -13,3 +13,4 @@ node_modules/
 .rumdl_cache/
 .lycheecache
 .pre-commit-config.yaml.lock
+/.insitu/

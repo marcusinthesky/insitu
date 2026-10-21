@@ -150,6 +150,14 @@ repos:
         files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
         pass_filenames: false
 
+      # The README's documentation index is an Insitu view of this repository.
+      - id: insitu-check
+        name: insitu check (views current)
+        entry: cargo run --quiet --locked -p insitu -- check
+        language: system
+        files: \.md$|^insitu(/|\.toml$)|\.rs$|(^|/)Cargo\.(toml|lock)$
+        pass_filenames: false
+
       # ── Python SDK ─────────────────────────────────────────────────────
       - id: ruff-check
         name: Ruff lint
