@@ -2,6 +2,7 @@
 name: candidate-artifacts
 on:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -36,6 +37,11 @@ jobs:
           node-version: '22'
       - run: rustup toolchain install 1.90.0 --profile minimal
       - run: cargo build --locked --release -p insitu --target ${{ matrix.target }}
+      - name: Stage release binary
+        shell: bash
+        run: |
+          mkdir -p dist/bin
+          cp target/${{ matrix.target }}/release/${{ matrix.executable }} "dist/bin/insitu-${{ matrix.target }}${{ endsWith(matrix.executable, '.exe') && '.exe' || '' }}"
       - run: python scripts/stage_npm.py --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
       - run: python -m pip install 'maturin>=1.9,<2' 'pydantic>=2.11,<3'
       - run: maturin build --locked --release --target ${{ matrix.target }} --out dist/wheels
