@@ -597,7 +597,9 @@ mod tests {
     fn pricing_perspective_children_template_matches_jinja2() {
         let oracle: Value = serde_json::from_str(ORACLE).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let templates = dir.path().join("insitu/templates");
+        // Builtins expects a canonical root (macOS /private/var, Windows \\?\).
+        let root = dir.path().canonicalize().unwrap();
+        let templates = root.join("insitu/templates");
         fs::create_dir_all(&templates).unwrap();
         fs::write(
             templates.join("children.md.j2"),
@@ -608,7 +610,7 @@ mod tests {
             .as_object()
             .cloned()
             .unwrap();
-        let result = Builtins::new(dir.path(), Paths::default())
+        let result = Builtins::new(&root, Paths::default())
             .render(
                 oracle["rows"].clone(),
                 &options,
