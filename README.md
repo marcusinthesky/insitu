@@ -80,6 +80,7 @@ template = "documentation.md.j2"
 | [Compatibility](docs/compatibility.md) | `docs/compatibility.md` |
 | [Distribution](docs/distribution.md) | `docs/distribution.md` |
 | [Process protocol v1](docs/protocol.md) | `docs/protocol.md` |
+| [Python SDK](docs/python-sdk.md) | `docs/python-sdk.md` |
 | [Insitu for Node.js](packaging/npm/README.md) | `packaging/npm/README.md` |
 
 <!-- insitu:end -->
@@ -205,6 +206,7 @@ just lint         # Clippy, warnings denied
 just parity ~/Git/pricing-perspective   # read-only `check` on a real project
 just fmt          # format Rust, Nix, TOML, Markdown, Python and justfiles
 just prose        # advisory Harper grammar pass over tracked Markdown
+just site         # build the documentation site into site/
 ```
 
 `rust-toolchain.toml` is the minimum supported Rust version, which CI tests on

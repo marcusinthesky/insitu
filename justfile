@@ -35,6 +35,18 @@ test-portable:
     uv run --frozen pytest -q
     node --test tests/node/launcher.test.cjs
 
+# Documentation site in site/. Zensical copies all of docs_dir (the repository root)
+# and has no exclude option, so it builds from an export of tracked and unignored files.
+site:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src=$(mktemp -d)
+    trap 'rm -rf "$src"' EXIT
+    git ls-files -z --cached --others --exclude-standard | tar --null --ignore-failed-read -T - -cf - | tar -xf - -C "$src"
+    uv run --frozen zensical build --strict --config-file "$src/mkdocs.yml"
+    rm -rf site
+    mv "$src/site" site
+
 # Public API compatibility of the library crates against the last published release.
 semver:
     cargo semver-checks --workspace
