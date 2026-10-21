@@ -7,7 +7,10 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Concrete reconciliation engine and built-in capabilities for Insitu"
-readme = "README.md"
+readme = "../../README.md"
+# The crate README is a repository component page with front matter; crates.io
+# shows the project README instead.
+exclude = ["README.md"]
 
 [lints]
 workspace = true

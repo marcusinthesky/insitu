@@ -75,15 +75,11 @@ template = "documentation.md.j2"
 
 | Guide | File |
 | --- | --- |
+| [Architecture](ARCHITECTURE.md) | `ARCHITECTURE.md` |
 | [Contributing](CONTRIBUTING.md) | `CONTRIBUTING.md` |
-| [Architecture and reading guide](docs/architecture.md) | `docs/architecture.md` |
 | [Compatibility](docs/compatibility.md) | `docs/compatibility.md` |
 | [Distribution](docs/distribution.md) | `docs/distribution.md` |
 | [Process protocol v1](docs/protocol.md) | `docs/protocol.md` |
-| [insitu-core](crates/insitu-core/README.md) | `crates/insitu-core/README.md` |
-| [insitu-protocol](crates/insitu-protocol/README.md) | `crates/insitu-protocol/README.md` |
-| [insitu-sdk](crates/insitu-sdk/README.md) | `crates/insitu-sdk/README.md` |
-| [insitu](crates/insitu/README.md) | `crates/insitu/README.md` |
 | [Insitu for Node.js](packaging/npm/README.md) | `packaging/npm/README.md` |
 
 <!-- insitu:end -->
@@ -165,20 +161,28 @@ processes, not sandboxes.
 
 ## Repository
 
-| Component | Responsibility |
-| --- | --- |
-| `crates/insitu` | CLI and filesystem watch loop |
-| `crates/insitu-core` | Scanning, SQLite index, SQL/Jinja, patches, Git, extension installation |
-| `crates/insitu-protocol` | Validated v1 models and bidirectional framed JSON-RPC |
-| `crates/insitu-sdk` | Typed Rust extension registration |
-| `python/insitu` | Python extension SDK; no Python engine |
-| `packaging/npm` | No-download launcher for optional native platform packages |
-| `flake.nix` | Nix package and app |
+Each crate describes itself in its README's front matter, and this table, like the
+one in [ARCHITECTURE.md](ARCHITECTURE.md), is generated from it:
 
-Start reading at `Project::run` in `crates/insitu-core/src/project.rs`, then
-`document.rs` and `patch.rs`. The [architecture guide](docs/architecture.md)
-explains ownership and invariants; [protocol](docs/protocol.md) describes the
-extension wire format.
+<!-- insitu:begin sql
+id = "components"
+model = "components"
+template = "components.md.j2"
+-->
+
+| Crate | Responsibility | Start reading |
+| --- | --- | --- |
+| [insitu](crates/insitu/README.md) | The command line, its reports and the filesystem watch loop; it computes nothing itself. | [`src/main.rs`](crates/insitu/src/main.rs) |
+| [insitu-core](crates/insitu-core/README.md) | The engine — scan, SQLite index, plan, render, then a checked, staged commit of every changed file. | [`src/project.rs`](crates/insitu-core/src/project.rs) |
+| [insitu-protocol](crates/insitu-protocol/README.md) | Version 1 wire format for extensions — validated models and a bidirectional JSON-RPC peer over framed stdio. | [`src/peer.rs`](crates/insitu-protocol/src/peer.rs) |
+| [insitu-sdk](crates/insitu-sdk/README.md) | Typed registration for Rust extensions — resources, transforms, renderers and validators as async handlers. | [`src/lib.rs`](crates/insitu-sdk/src/lib.rs) |
+
+<!-- insitu:end -->
+
+`python/insitu` is the Python extension SDK (there is no Python engine),
+`packaging/npm` a launcher for the native binaries, and `flake.nix` the Nix package.
+[ARCHITECTURE.md](ARCHITECTURE.md) explains how the pieces fit, and
+[protocol](docs/protocol.md) describes the extension wire format.
 
 ## Development
 

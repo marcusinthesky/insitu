@@ -1,0 +1,5 @@
+| Crate | Responsibility | Start reading |
+| --- | --- | --- |
+{% for row in rows %}
+| [{{ row.title }}]({{ row.path | relative_to(this.directory) }}) | {{ row.description }} | [`{{ row.start_here }}`]({{ (row.parent ~ "/" ~ row.start_here) | relative_to(this.directory) }}) |
+{% endfor %}

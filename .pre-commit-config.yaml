@@ -87,6 +87,12 @@ repos:
         entry: schematter validate --schema schemas/guide.document-schema.yaml
         language: system
         files: \.md$
+        exclude: ^crates/[^/]+/README\.md$
+      - id: schematter-component
+        name: schematter (crate README front matter)
+        entry: schematter validate --schema schemas/component.document-schema.yaml
+        language: system
+        files: ^crates/[^/]+/README\.md$
       - id: codespell
         name: codespell
         entry: codespell
@@ -155,12 +161,13 @@ repos:
         files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
         pass_filenames: false
 
-      # The README's documentation index is an Insitu view of this repository.
+      # README.md and ARCHITECTURE.md hold Insitu views of this repository. The
+      # project tree depends on every path, so the check always runs.
       - id: insitu-check
         name: insitu check (views current)
         entry: cargo run --quiet --locked -p insitu -- check
         language: system
-        files: \.md$|^insitu(/|\.toml$)|\.rs$|(^|/)Cargo\.(toml|lock)$
+        always_run: true
         pass_filenames: false
 
       # ── Python SDK ─────────────────────────────────────────────────────

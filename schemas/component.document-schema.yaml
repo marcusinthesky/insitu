@@ -1,0 +1,26 @@
+$schema: https://document-schema.org/draft/2026-06/schema
+description: >-
+  A crate README describes the crate in front matter; ARCHITECTURE.md and the
+  README generate their component tables from it (insitu/models/components.sql).
+frontmatter:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  additionalProperties: false
+  required: [description, start_here]
+  properties:
+    description:
+      description: One sentence on what the crate is responsible for.
+      type: string
+      minLength: 1
+      maxLength: 160
+      pattern: ^[^\r\n]+$
+    start_here:
+      description: The file to read first, relative to the crate.
+      type: string
+      pattern: ^src/.+\.rs$
+sections:
+  - header:
+      pattern: ^\S
+    maxContains: 1
+additionalSections: false
+additionalBlocks: false
