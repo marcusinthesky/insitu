@@ -237,7 +237,10 @@ impl Builtins {
                 env.set_unknown_method_callback(python_method);
                 env.set_loader(move |name| {
                     let file = paths::inside(&root, name).map_err(template_error)?;
-                    fs::read_to_string(file).map(Some).map_err(template_error)
+                    // LF in, so a template renders the same however it was checked out.
+                    fs::read_to_string(file)
+                        .map(|text| Some(text.replace("\r\n", "\n")))
+                        .map_err(template_error)
                 });
                 env.add_filter("relative_to", |value: String, directory: Option<String>| {
                     relative_to(&value, directory.as_deref().unwrap_or(""))

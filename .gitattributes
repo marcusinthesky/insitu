@@ -1,0 +1,16 @@
+# Lockfiles are machine-written: collapsed in diffs and left out of language stats.
+Cargo.lock linguist-generated
+uv.lock linguist-generated
+flake.lock linguist-generated
+devenv.lock linguist-generated
+
+# Binary assets such as logos and screenshots live in Git LFS.
+# Workflows that need them must check out with `lfs: true`.
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.gif filter=lfs diff=lfs merge=lfs -text
+*.webp filter=lfs diff=lfs merge=lfs -text
+*.ico filter=lfs diff=lfs merge=lfs -text
+*.pdf filter=lfs diff=lfs merge=lfs -text
+*.woff2 filter=lfs diff=lfs merge=lfs -text

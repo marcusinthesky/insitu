@@ -18,6 +18,9 @@ enum. A small BTreeMap-based graph makes ordering deterministic.
 
 `Document` owns the source string and byte ranges. Regions are recognized outside
 fenced code; output is replaced only between the opening and closing markers.
+Templates are read as LF, and generated output takes the document's own line
+ending (CRLF if its first line ends in CRLF, otherwise LF), so results do not
+depend on how Git checked the files out.
 `patch.rs` stages complete replacement files on the destination filesystem, checks
 original bytes before writes and attempts rollback after a replacement failure.
 YAML syntax trees exist only inside synchronous editing functions; they do not

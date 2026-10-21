@@ -242,10 +242,30 @@ pub(crate) fn source_text(text: &str) -> Result<String> {
     Ok(result)
 }
 
+/// The line ending a document already uses, judged by its first line; LF if it has none.
+pub(crate) fn line_ending(text: &str) -> &'static str {
+    match text.find('\n') {
+        Some(end) if text[..end].ends_with('\r') => "\r\n",
+        _ => "\n",
+    }
+}
+
+/// Generated text in the given line ending, whatever endings its inputs used.
+pub(crate) fn with_line_ending(text: &str, ending: &str) -> String {
+    let text = text.replace("\r\n", "\n");
+    if ending == "\n" {
+        text
+    } else {
+        text.replace('\n', ending)
+    }
+}
+
+/// Generated content is written in the document's own line ending.
 pub(crate) fn replace_regions(
     text: &str,
     replacements: &BTreeMap<String, String>,
 ) -> Result<String> {
+    let ending = line_ending(text);
     let mut updated = text.to_owned();
     for region in parse_regions(text, 0)?.iter().rev() {
         if let Some(content) = replacements.get(&region.id) {
@@ -255,7 +275,7 @@ pub(crate) fn replace_regions(
             } else {
                 format!("\n\n{content}\n\n")
             };
-            updated.replace_range(region.content.clone(), &rendered);
+            updated.replace_range(region.content.clone(), &with_line_ending(&rendered, ending));
         }
     }
     Ok(updated)
@@ -277,13 +297,19 @@ pub(crate) fn replace_frontmatter(text: &str, patches: &[(String, Value)]) -> Re
         return Ok(text.into());
     }
     let document = Document::parse(text.into())?;
-    let raw = document
-        .yaml_range
-        .as_ref()
-        .map_or("{}\n", |r| &text[r.clone()]);
+    let ending = line_ending(text);
+    let raw = with_line_ending(
+        document
+            .yaml_range
+            .as_ref()
+            .map_or("", |r| &text[r.clone()]),
+        "\n",
+    );
     // YamlFile, not Document: comments before the first key are stream-level YAML
-    // and Document::from_str rejects them rather than round-tripping them.
-    let yaml = yaml_edit::YamlFile::from_str(if raw.trim().is_empty() { "{}\n" } else { raw })?;
+    // and Document::from_str rejects them rather than round-tripping them. Missing
+    // or blank front matter starts empty, not as `{}`: yaml-edit cannot nest block
+    // mappings inside a flow mapping.
+    let yaml = yaml_edit::YamlFile::from_str(if raw.trim().is_empty() { "" } else { &raw })?;
     let root = yaml
         .ensure_document()
         .as_mapping()
@@ -324,6 +350,15 @@ pub(crate) fn replace_frontmatter(text: &str, patches: &[(String, Value)]) -> Re
     if !rendered.ends_with('\n') {
         rendered.push('\n');
     }
+    // yaml-edit mangles block values nested in flow mappings; never write that.
+    let reparsed = parse_yaml(&rendered).ok().map(Value::Object);
+    ensure!(
+        patches.iter().all(
+            |(pointer, value)| reparsed.as_ref().and_then(|r| r.pointer(pointer)) == Some(value)
+        ),
+        "cannot add generated values to flow-style front matter; write it in block style"
+    );
+    let rendered = with_line_ending(&rendered, ending);
     if let Some(range) = document.yaml_range {
         Ok(format!(
             "{}{}{}",
@@ -332,7 +367,7 @@ pub(crate) fn replace_frontmatter(text: &str, patches: &[(String, Value)]) -> Re
             &text[range.end..]
         ))
     } else {
-        Ok(format!("---\n{rendered}---\n{text}"))
+        Ok(format!("---{ending}{rendered}---{ending}{text}"))
     }
 }
 
@@ -398,6 +433,52 @@ mod tests {
         assert!(changed.contains("# leave me\ntitle: 'exact quote'"));
         assert!(changed.ends_with("---\n\n# body\n"));
         assert_eq!(replace_frontmatter(&changed, &patches).unwrap(), changed);
+    }
+
+    #[test]
+    fn generated_text_follows_the_document_line_ending() {
+        let mut replacements = BTreeMap::new();
+        replacements.insert("x".into(), "| a |\r\n| b |\n".into());
+        let patches = vec![("/generated/n".into(), serde_json::json!(1))];
+        for ending in ["\n", "\r\n"] {
+            let text = with_line_ending(
+                "---\ntitle: t\n---\n<!-- insitu:begin include\nid='x'\n-->\nold\n<!-- insitu:end -->\n",
+                ending,
+            );
+            let changed =
+                replace_frontmatter(&replace_regions(&text, &replacements).unwrap(), &patches)
+                    .unwrap();
+            assert_eq!(with_line_ending(&changed, ending), changed, "{ending:?}");
+            assert!(changed.contains(&with_line_ending("\n\n| a |\n| b |\n\n", ending)));
+            assert_eq!(replace_regions(&changed, &replacements).unwrap(), changed);
+            assert_eq!(replace_frontmatter(&changed, &patches).unwrap(), changed);
+        }
+    }
+
+    #[test]
+    fn missing_or_blank_frontmatter_gets_block_yaml() {
+        let patches = vec![("/generated/counts".into(), serde_json::json!({"total": 2}))];
+        let expected = "---\ngenerated:\n  counts:\n    total: 2\n---\n";
+        for (text, body) in [
+            ("body\n", "body\n"),
+            ("---\n---\nbody\n", "body\n"),
+            ("---\n\n---\n", ""),
+        ] {
+            let changed = replace_frontmatter(text, &patches).unwrap();
+            assert_eq!(changed, format!("{expected}{body}"), "{text:?}");
+            assert_eq!(replace_frontmatter(&changed, &patches).unwrap(), changed);
+        }
+        assert_eq!(
+            replace_frontmatter("body\r\n", &patches).unwrap(),
+            with_line_ending(&format!("{expected}body\n"), "\r\n")
+        );
+    }
+
+    #[test]
+    fn flow_frontmatter_is_refused_rather_than_corrupted() {
+        let patches = vec![("/generated/n".into(), serde_json::json!(1))];
+        let error = replace_frontmatter("---\n{title: x}\n---\nbody\n", &patches).unwrap_err();
+        assert!(error.to_string().contains("block style"), "{error}");
     }
 
     #[test]
