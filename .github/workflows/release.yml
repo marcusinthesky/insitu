@@ -107,10 +107,11 @@ jobs:
       # Artifacts are zipped without mode bits; the wrapper spawns these directly.
       - run: chmod +x dist/npm/*/bin/insitu
       # Platform packages first, so the wrapper never resolves to a missing dependency.
+      # The ./ prefix matters: npm reads a bare `owner/name` path as a GitHub repository.
       # npm 11 ignores publishConfig.tag, so pre-releases must name their dist-tag.
       - run: |
-          for package in dist/npm/*/; do npm publish --tag "$TAG" "$package"; done
-          npm publish --tag "$TAG" packaging/npm
+          for package in ./dist/npm/*/; do npm publish --tag "$TAG" "$package"; done
+          npm publish --tag "$TAG" ./packaging/npm
         env:
           TAG: ${{ needs.version.outputs.prerelease == 'true' && 'next' || 'latest' }}
   dry-run:
@@ -140,8 +141,8 @@ jobs:
           python -m pip install twine
           twine check --strict dist/wheels/*
       - run: |
-          for package in dist/npm/*/; do npm publish --dry-run --tag next "$package"; done
-          npm publish --dry-run --tag next packaging/npm
+          for package in ./dist/npm/*/; do npm publish --dry-run --tag next "$package"; done
+          npm publish --dry-run --tag next ./packaging/npm
   # Runs after every registry succeeds on a tag, and without publishing on a pull request.
   github:
     needs: [version, build, sdist, crates-io, pypi, npm]
