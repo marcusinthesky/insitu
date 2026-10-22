@@ -10,7 +10,7 @@ jobs:
   gates:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
       - run: bash nix/install-devenv.sh
       - run: devenv test
@@ -42,11 +42,11 @@ jobs:
         os: [ubuntu-24.04, macos-15-intel, macos-15, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: cargo test --workspace --locked
   nix:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
       - run: nix flake check --no-update-lock-file
