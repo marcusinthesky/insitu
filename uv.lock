@@ -70,7 +70,7 @@ wheels = [
 
 [[package]]
 name = "insitu-cli"
-version = "0.2.0rc1"
+version = "0.2.0rc2"
 source = { virtual = "." }
 dependencies = [
     { name = "pydantic" },
