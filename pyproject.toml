@@ -3,7 +3,7 @@ requires = ["maturin>=1.9,<2"]
 build-backend = "maturin"
 
 [project]
-name = "insitu"
+name = "insitu-cli"
 version = "0.2.0rc1"
 description = "Native document materialization engine with a compatible Python extension SDK"
 readme = "README.md"
