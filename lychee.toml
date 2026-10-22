@@ -1,0 +1,22 @@
+# Network-link policy for the root `lychee` prek hook. rumdl (MD051/MD057)
+# owns anchors and repository-relative paths; this file owns the network claim.
+scheme = ["http", "https"]
+extensions = ["md"]
+include_verbatim = false
+include_mail = false
+exclude_all_private = true
+
+# Cache successes only: a repaired endpoint must be rechecked immediately
+# rather than staying poisoned by a cached failure.
+cache = true
+max_cache_age = "7d"
+cache_exclude_status = "400.."
+
+# Bound network load; retry transient failures without stampeding a host.
+no_progress = true
+timeout = 20
+max_retries = 3
+retry_wait_time = 2
+max_concurrency = 16
+host_concurrency = 4
+host_request_interval = "250ms"

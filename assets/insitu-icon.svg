@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-labelledby="title">
+  <title id="title">insitu icon</title>
+  <g fill="#111111">
+    <path d="M83 21c4-2.5 10-2.5 14 0l60 35c5 3 5 9 0 12L97 103c-4 2.5-10 2.5-14 0L23 68c-5-3-5-9 0-12z"/>
+    <path d="m19 87 64 37c4 2.5 10 2.5 14 0l64-37v15c0 3-2 5-5 7l-59 34c-4 2.5-10 2.5-14 0l-59-34c-3-2-5-4-5-7z"/>
+    <path d="m19 124 64 37c4 2.5 10 2.5 14 0l64-37v12c0 3-2 5-5 7l-59 34c-4 2.5-10 2.5-14 0l-59-34c-3-2-5-4-5-7z" transform="translate(0 -11)"/>
+  </g>
+</svg>

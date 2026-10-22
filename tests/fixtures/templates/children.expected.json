@@ -1,0 +1,72 @@
+{
+ "rows": [
+  {
+   "entry_id": "t1-alpha",
+   "task": "[`t1` alpha](tasks/t1-alpha/README.md)",
+   "status": "in-progress",
+   "description": "A deliberately long description that keeps going well past the seventy-two character budget, then more.",
+   "waits_on": "`t2`",
+   "target": "",
+   "open_descendants": "3",
+   "visible": 1,
+   "is_terminal": 0,
+   "sort_key": "0000000001."
+  },
+  {
+   "entry_id": "t2-beta",
+   "task": "[`t2` beta](tasks/t2-beta/README.md)",
+   "status": "ready",
+   "description": "Short | piped  \t text — ünïcode",
+   "waits_on": "",
+   "target": "paper",
+   "open_descendants": "—",
+   "visible": 1,
+   "is_terminal": 0,
+   "sort_key": "0000000002."
+  },
+  {
+   "entry_id": "t3-gamma",
+   "task": "[`t3` gamma](tasks/t3-gamma/README.md)",
+   "status": "done",
+   "description": "Finished.",
+   "waits_on": "",
+   "target": "",
+   "open_descendants": "—",
+   "visible": 0,
+   "is_terminal": 1,
+   "sort_key": "0000000003."
+  }
+ ],
+ "expected": "| Status      | Task                                   | What                                                            | Waits on | Target | Open |\n| ----------- | -------------------------------------- | --------------------------------------------------------------- | -------- | ------ | ---- |\n| in-progress | [`t1` alpha](tasks/t1-alpha/README.md) | A deliberately long description that keeps going well past the… | `t2`     |        | 3    |\n| ready       | [`t2` beta](tasks/t2-beta/README.md)   | Short \\| piped text — ünïcode                                   |          | paper  | —    |\n\n`2 of 3 open — 1 terminal`",
+ "rsplit": [
+  [
+   "a",
+   "b",
+   "c"
+  ],
+  [
+   "a b",
+   "c"
+  ],
+  [
+   "a",
+   "b",
+   "",
+   "c"
+  ],
+  [
+   "a,b,",
+   "c"
+  ],
+  [],
+  [
+   "x"
+  ]
+ ],
+ "ljust": [
+  "ab   ",
+  "ab",
+  "é--",
+  "**ab"
+ ]
+}

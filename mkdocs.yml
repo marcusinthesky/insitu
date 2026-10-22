@@ -1,20 +1,37 @@
+# The site is the repository itself: README.md is the home page and every
+# relative link works as it does on GitHub. Zensical copies everything under
+# docs_dir and has no exclude option, so `just site` builds from an export of
+# the files Git tracks or would track, never the working tree with target/.
 site_name: Insitu
 site_url: https://marcusinthesky.github.io/insitu/
-site_description: Reactive materializations for repository documents
-docs_dir: docs
+site_description: Your files are the source of truth. Everything else is a view.
+repo_url: https://github.com/marcusinthesky/insitu
+docs_dir: .
 site_dir: site
+theme:
+  logo: assets/insitu-icon.svg
+  favicon: assets/insitu-icon.svg
 nav:
-  - Home: index.md
-  - Getting started: getting-started.md
-  - Concepts: concepts.md
-  - Python API: reference.md
+  - Home: README.md
+  - Architecture: ARCHITECTURE.md
+  - Guides:
+      - Compatibility: docs/compatibility.md
+      - Distribution: docs/distribution.md
+      - Process protocol: docs/protocol.md
+      - Python SDK: docs/python-sdk.md
+  - Crates:
+      - insitu: crates/insitu/README.md
+      - insitu-core: crates/insitu-core/README.md
+      - insitu-protocol: crates/insitu-protocol/README.md
+      - insitu-sdk: crates/insitu-sdk/README.md
+  - Contributing: CONTRIBUTING.md
 plugins:
   - search
   - autorefs
   - mkdocstrings:
       handlers:
         python:
-          paths: [src]
+          paths: [python]
           options:
             docstring_style: google
             show_root_heading: true

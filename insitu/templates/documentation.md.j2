@@ -1,0 +1,5 @@
+| Guide | File |
+| --- | --- |
+{% for row in rows %}
+| [{{ row.title }}]({{ row.path | relative_to(this.directory) }}) | `{{ row.path }}` |
+{% endfor %}

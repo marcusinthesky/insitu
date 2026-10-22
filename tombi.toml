@@ -1,0 +1,7 @@
+[schema]
+enabled = false
+strict = false
+catalog.paths = []
+
+[lsp]
+formatting.enabled = false

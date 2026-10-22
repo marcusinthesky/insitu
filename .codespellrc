@@ -1,0 +1,4 @@
+[codespell]
+skip = Cargo.lock,uv.lock,devenv.lock,flake.lock,./target
+# versoin: a deliberate misspelling that tests unknown-field rejection.
+ignore-words-list = insitu,versoin

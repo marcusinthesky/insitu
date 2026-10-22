@@ -1,0 +1,58 @@
+# Builds candidate artifacts only. Publication is a separate, maintainer-approved step.
+name: candidate-artifacts
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            executable: insitu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            executable: insitu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: insitu
+          - os: macos-15
+            target: aarch64-apple-darwin
+            executable: insitu
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            executable: insitu.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: rustup toolchain install 1.90.0 --profile minimal
+      - run: cargo build --locked --release -p insitu --target ${{ matrix.target }}
+      - name: Stage release binary
+        shell: bash
+        run: |
+          mkdir -p dist/bin
+          cp target/${{ matrix.target }}/release/${{ matrix.executable }} "dist/bin/insitu-${{ matrix.target }}${{ endsWith(matrix.executable, '.exe') && '.exe' || '' }}"
+      - run: python scripts/stage_npm.py --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.executable }}
+      - run: python -m pip install 'maturin>=1.9,<2' 'pydantic>=2.11,<3'
+      - run: maturin build --locked --release --target ${{ matrix.target }} --out dist/wheels
+      - name: Install and smoke-test wheel
+        shell: bash
+        run: |
+          python -m pip install dist/wheels/*.whl
+          insitu --version
+          python -c 'from insitu.sdk import Extension, Context'
+          python -m insitu --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: insitu-${{ matrix.target }}
+          path: dist/
