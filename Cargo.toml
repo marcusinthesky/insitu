@@ -28,7 +28,7 @@ globset = "0.4"
 walkdir = "2.5"
 minijinja = { version = "2.12", features = ["loader", "json", "builtins", "preserve_order"] }
 minijinja-contrib = { version = "2.12", features = ["pycompat"] }
-rusqlite = { version = "0.37", features = ["bundled", "hooks", "extra_check"] }
+rusqlite = { version = "0.40", features = ["bundled", "hooks", "extra_check"] }
 serde_norway = "0.9"
 yaml-edit = "0.3.2"
 git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
