@@ -36,6 +36,7 @@ package = false
 manifest-path = "crates/insitu/Cargo.toml"
 bindings = "bin"
 python-source = "python"
+module-name = "insitu"
 python-packages = ["insitu"]
 strip = true
 include = ["LICENSE", "docs/**", "tests/fixtures/**", "rust-toolchain.toml"]
