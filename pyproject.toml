@@ -24,7 +24,7 @@ dev = [
   "mkdocstrings-python==2.0.9",
   "pytest>=8",
   "pytest-asyncio>=0.25",
-  "zensical==0.0.64",
+  "zensical==0.1.0",
 ]
 
 # The engine is a maturin binary; development installs only the SDK's
