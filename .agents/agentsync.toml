@@ -1,0 +1,41 @@
+source_dir = "."
+default_agents = ["codex", "claude"]
+
+[gitignore]
+enabled = false
+
+[agents.codex]
+enabled = true
+
+[agents.codex.targets.instructions]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
+
+[agents.codex.targets.settings]
+source = "codex.toml"
+destination = ".codex/config.toml"
+type = "symlink"
+
+[agents.codex.targets.skills]
+source = "skills"
+destination = ".codex/skills"
+type = "symlink"
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.claude.targets.settings]
+source = "claude-settings.json"
+destination = ".claude/settings.json"
+type = "symlink"
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"

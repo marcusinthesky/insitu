@@ -4,12 +4,6 @@ default_stages: [pre-commit]
 repos:
   - repo: builtin
     hooks:
-      # Formatting
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: mixed-line-ending
-        args: [--fix=lf]
-
       # Syntax validation
       - id: check-yaml
       - id: check-toml
@@ -23,7 +17,6 @@ repos:
 
       # Cross-platform compatibility
       - id: check-case-conflict
-      - id: fix-byte-order-marker
       - id: destroyed-symlinks
 
       # Quality
@@ -32,6 +25,35 @@ repos:
 
   - repo: local
     hooks:
+      # Formatting checks report drift; `just fmt` performs repairs explicitly.
+      - id: text-check
+        name: Whitespace and final newlines
+        entry: bash infra/nix/check-text.sh
+        language: system
+        types: [text]
+      - id: text-invariants
+        name: Text encoding, line endings and final blank lines
+        entry: env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV python3 scripts/check_text.py
+        language: system
+        types: [text]
+      - id: locked-dependencies
+        name: Cargo and Python locks are current
+        entry: just dependencies
+        language: system
+        files: (^|/)(Cargo\.toml|Cargo\.lock|pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: workflow-lint
+        name: GitHub Actions workflow syntax
+        entry: bash -c 'actionlint .github/workflows/*.yml'
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: false
+      - id: shellcheck
+        name: ShellCheck scripts
+        entry: shellcheck
+        language: system
+        types: [shell]
+        files: \.sh$
       # ── Nix ────────────────────────────────────────────────────────────
       - id: nixfmt
         name: nixfmt (RFC 166 format)
@@ -101,7 +123,7 @@ repos:
       # this makes only the orthogonal claim that external links respond.
       - id: lychee
         name: lychee (external link integrity)
-        entry: lychee --config lychee.toml .
+        entry: just links
         language: system
         types: [markdown]
         pass_filenames: false
@@ -153,19 +175,20 @@ repos:
         language: system
         files: (^|/)Cargo\.toml$
         pass_filenames: false
-      # Fetches the advisory database, so it runs when dependencies change.
+      # Fetches the advisory database; ordinary checks use prepared inputs only.
       - id: cargo-deny
         name: cargo-deny (advisories, licenses, sources)
-        entry: cargo deny check
+        entry: just security
         language: system
         files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
         pass_filenames: false
+        stages: [pre-push]
 
       # README.md and ARCHITECTURE.md hold Insitu views of this repository. The
       # project tree depends on every path, so the check always runs.
       - id: insitu-check
         name: insitu check (views current)
-        entry: cargo run --quiet --locked -p insitu -- check
+        entry: cargo run --quiet --frozen -p insitu -- check
         language: system
         always_run: true
         pass_filenames: false
@@ -183,7 +206,7 @@ repos:
         types: [python]
       - id: pytest
         name: Python SDK and packaging tests
-        entry: uv run --frozen pytest -q
+        entry: env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run --offline --frozen pytest -q
         language: system
         files: \.py$|^pyproject\.toml$|^uv\.lock$|^packaging/
         pass_filenames: false
