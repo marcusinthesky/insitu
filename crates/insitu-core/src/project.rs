@@ -262,11 +262,11 @@ impl Project {
     /// A front-matter SQL value: rendered through a template when one is set;
     /// otherwise a single row is an object, as in Python, and other counts an array.
     fn query_frontmatter(
-        &self,
+        &mut self,
         options: &Options,
         location: &Location,
     ) -> Result<InvocationResult> {
-        let mut result = self.builtins.query(options, location, &self.index)?;
+        let mut result = self.builtins.query(options, location, &mut self.index)?;
         if options.get("template").is_some_and(truthy) {
             let rendered = self.builtins.render(result.value, options, location)?;
             result.value = rendered.content.unwrap_or_default().into();
@@ -334,7 +334,7 @@ impl Project {
             }
             Handler::Builtin(Builtin::SqlResource) => {
                 self.builtins
-                    .query(&call.options, &call.location, &self.index)
+                    .query(&call.options, &call.location, &mut self.index)
             }
             Handler::Builtin(Builtin::Jinja) => {
                 self.builtins
@@ -461,7 +461,7 @@ impl Project {
                 ("model".to_owned(), Value::from(model)),
                 ("params".to_owned(), Value::Object(params)),
             ]);
-            let result = self.builtins.query(&options, &location, &self.index)?;
+            let result = self.builtins.query(&options, &location, &mut self.index)?;
             (result.value, result.dependencies)
         } else if let Some(query) = resource.strip_prefix("resource:") {
             let (name, options) = query_options(query);
