@@ -1,0 +1,19 @@
+# Only these files participate in Exordio updates. Everything else is authored
+# by Insitu, including .agents/AGENTS.md and this ownership manifest.
+copier_version = "9.16.0"
+files = [
+  ".copier-answers.yml",
+  ".agents/README.md",
+  ".agents/agentsync.toml",
+  ".agents/claude-settings.json",
+  ".agents/codex.toml",
+  ".agents/justfile",
+  ".agents/skills/repository-workflow/SKILL.md",
+  ".github/workflows/security.yml",
+  "infra/nix/check-text.sh",
+  "infra/nix/check.sh",
+  "infra/nix/pkgs/agentsync.nix",
+  "src/python/scripts/agent_preflight/README.md",
+  "src/python/scripts/agent_preflight/script.py",
+  "src/python/scripts/agent_preflight/script.py.lock",
+]

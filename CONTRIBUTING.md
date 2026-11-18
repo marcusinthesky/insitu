@@ -1,7 +1,13 @@
 # Contributing
 
-Work inside the devenv shell (see the README) and run `just check` before pushing;
-the prek hooks run the same gates on commit. Keep the ordinary control flow visible
+Work inside the devenv shell (see the README), run `just setup` explicitly, and
+run `just check` before pushing; the prek hooks run the same gates on commit.
+Checks do not repair source. Use `just fmt` for formatting, `just sync` for
+generated views, and `just security` for online dependency checks. Build the site
+with `just site`. Read [Exordio adoption](docs/exordio-adoption.md) before changing
+template-owned files or updating the template.
+
+Keep the ordinary control flow visible
 in `Project::run`. Prefer concrete structs, local borrowing and owned data between
 subsystems. Introduce traits only for demonstrated variability.
 

@@ -5,6 +5,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Install the CLI version required by the locked modules. Upstream may bump
 # its CLI version before updating src/modules/latest-version on the same branch.
+# The interpolation below belongs to Nix, not the shell.
+# shellcheck disable=SC2016
 version=$(nix eval --impure --raw --expr '
   let input = (builtins.fromJSON (builtins.readFile ./devenv.lock)).nodes.devenv.locked;
       modules = builtins.getFlake "github:cachix/devenv/${input.rev}?dir=src/modules";

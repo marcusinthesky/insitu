@@ -28,11 +28,11 @@ globset = "0.4"
 walkdir = "2.5"
 minijinja = { version = "2.12", features = ["loader", "json", "builtins", "preserve_order"] }
 minijinja-contrib = { version = "2.12", features = ["pycompat"] }
-rusqlite = { version = "0.37", features = ["bundled", "hooks", "extra_check"] }
+rusqlite = { version = "0.41", features = ["bundled", "hooks", "extra_check"] }
 serde_norway = "0.9"
 yaml-edit = "0.3.2"
 git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
-chrono = { version = "0.4", default-features = false, features = ["std"] }
+time = { version = "0.3.47", default-features = false, features = ["formatting", "macros", "large-dates"] }
 sha2 = "0.10"
 sha1 = "0.10"
 hex = "0.4"

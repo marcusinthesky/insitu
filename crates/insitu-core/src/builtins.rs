@@ -149,7 +149,7 @@ impl Builtins {
         &self,
         options: &Options,
         location: &Location,
-        index: &Index,
+        index: &mut Index,
     ) -> Result<InvocationResult> {
         let name = option_string(options, "model", "");
         ensure!(!name.is_empty(), "SQL materialization requires model");

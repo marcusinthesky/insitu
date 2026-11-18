@@ -1,0 +1,13 @@
+_commit: b5f903da21eeda65c4e73ebf8c0634e948c24a4f
+_src_path: https://github.com/marcusinthesky/exordio.git
+agents:
+- codex
+- claude
+author: Insitu contributors
+description: Git-native reactive Markdown with a Rust engine and Python extension
+    SDK.
+languages: []
+project_name: Insitu
+project_slug: insitu
+secrets: false
+workflows: []
