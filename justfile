@@ -1,3 +1,4 @@
+# Adapted from Exordio for Insitu; see LICENSE-EXORDIO.
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set positional-arguments
 
@@ -22,28 +23,22 @@ dependencies:
     cargo metadata --format-version 1 --frozen > /dev/null
     {{ python }} uv lock --check --offline
 
-# Replay the saved upstream revision in isolation (fetches the pinned template).
-template-check:
-    {{ python }} uv run --offline --frozen python scripts/template.py check
-
-# Preview a guarded update to an explicit upstream commit without changing source.
-template-preview revision:
-    {{ python }} uv run --offline --frozen python scripts/template.py preview "$1"
-
-# Apply a trialed update from a clean branch; review the resulting diff.
-template-update revision:
-    {{ python }} uv run --offline --frozen python scripts/template.py update "$1"
-
 # Check tracked and untracked source without repairing files or fetching dependencies.
 check:
-    bash infra/nix/check.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=()
+    while IFS= read -r -d '' file; do
+      if [[ -f "$file" || -L "$file" ]]; then files+=("$file"); fi
+    done < <(git ls-files --cached --others --exclude-standard -z)
+    if (( ${#files[@]} )); then prek run --files "${files[@]}"; fi
     just agents::check
 
 # Formatting is an explicit write, separate from check.
 fmt:
     {{ python }} python3 scripts/format_text.py
     cargo fmt --all
-    nixfmt devenv.nix flake.nix nix/*.nix infra/nix/pkgs/*.nix
+    nixfmt devenv.nix flake.nix nix/*.nix
     tombi format --offline
     rumdl fmt .
     ruff format

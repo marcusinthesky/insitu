@@ -26,12 +26,9 @@ insitu/
 │   ├── insitu-protocol/
 │   └── insitu-sdk/
 ├── docs/
-├── infra/
-│   └── nix/
 ├── insitu/
 │   ├── models/
 │   └── templates/
-├── LICENSES/
 ├── nix/
 ├── packaging/
 │   └── npm/
@@ -39,8 +36,6 @@ insitu/
 │   └── insitu/
 ├── schemas/
 ├── scripts/
-├── src/
-│   └── python/
 └── tests/
     ├── fixtures/
     ├── node/
@@ -189,10 +184,7 @@ step. Formatting and region updates use `just fmt` and `just sync` explicitly.
 CI runs the gates, the minimum supported Rust version on Linux,
 macOS and Windows, and the Nix build. See [CONTRIBUTING](CONTRIBUTING.md).
 
-Shared checks and agent tooling come from a pinned Exordio template. The literal
-ownership list in `exordio.toml` constrains the guarded Copier updater; root
-integration, application code, releases and authored instructions remain
-Insitu-owned. See [Exordio adoption](docs/exordio-adoption.md).
+See [Contributing](CONTRIBUTING.md) for the Exordio tooling used by this repository.
 
 ## 9. Future considerations
 

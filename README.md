@@ -79,12 +79,9 @@ template = "documentation.md.j2"
 | [Contributing](CONTRIBUTING.md) | `CONTRIBUTING.md` |
 | [Compatibility](docs/compatibility.md) | `docs/compatibility.md` |
 | [Distribution](docs/distribution.md) | `docs/distribution.md` |
-| [Exordio adoption](docs/exordio-adoption.md) | `docs/exordio-adoption.md` |
 | [Process protocol v1](docs/protocol.md) | `docs/protocol.md` |
 | [Python SDK](docs/python-sdk.md) | `docs/python-sdk.md` |
-| [Shared repository infrastructure](infra/README.md) | `infra/README.md` |
 | [Insitu for Node.js](packaging/npm/README.md) | `packaging/npm/README.md` |
-| [README](src/python/scripts/agent_preflight/README.md) | `src/python/scripts/agent_preflight/README.md` |
 
 <!-- insitu:end -->
 
@@ -198,10 +195,7 @@ Claude links from `.agents/`. Shell entry itself performs no setup.
 `devenv up` then runs the current Rust engine's `insitu watch`, so generated
 regions follow your edits.
 
-Insitu adopts shared repository tooling from a pinned
-[Exordio template](docs/exordio-adoption.md). Its application layout, packaging,
-Nix flake and release workflows remain project-owned. Template updates use an
-explicit file ownership list and a guarded command.
+See [Contributing](CONTRIBUTING.md) for agent setup and the Exordio release pin.
 
 The Markdown gates divide the work: rumdl owns formatting and local links, lychee
 external links (on push), schematter document shape

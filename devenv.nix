@@ -46,7 +46,7 @@
     (callPackage ./nix/schematter.nix { })
     # AgentSync also ships native macOS builds. Keep the template's package
     # definition intact while supporting Insitu's existing Darwin environment.
-    ((callPackage ./infra/nix/pkgs/agentsync.nix { }).overrideAttrs (old: {
+    ((callPackage ./nix/agentsync.nix { }).overrideAttrs (old: {
       meta = old.meta // {
         platforms = old.meta.platforms ++ [
           "x86_64-darwin"

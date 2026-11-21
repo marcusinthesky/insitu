@@ -1,3 +1,4 @@
+# Adapted from Exordio for Insitu; see LICENSE-EXORDIO.
 {
   lib,
   rustPlatform,

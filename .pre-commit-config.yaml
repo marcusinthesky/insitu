@@ -28,12 +28,7 @@ repos:
       # Formatting checks report drift; `just fmt` performs repairs explicitly.
       - id: text-check
         name: Whitespace and final newlines
-        entry: bash infra/nix/check-text.sh
-        language: system
-        types: [text]
-      - id: text-invariants
-        name: Text encoding, line endings and final blank lines
-        entry: env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV python3 scripts/check_text.py
+        entry: env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV python3 scripts/format_text.py --check
         language: system
         types: [text]
       - id: locked-dependencies

@@ -13,6 +13,5 @@
   formatting and `just sync` for generated Insitu regions; never edit regions by hand.
 - Run `just check` and `just site` before handoff; report checks that could not run.
   Run `just security` separately when changing dependencies.
-- Read `docs/exordio-adoption.md` before changing template ownership. Use only the
-  guarded template update command, with an explicit Exordio commit.
+- Follow the Exordio update instructions in CONTRIBUTING.md.
 - Keep credentials and user-specific agent settings out of tracked files.

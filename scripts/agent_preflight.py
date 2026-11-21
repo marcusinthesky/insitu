@@ -1,7 +1,4 @@
-# /// script
-# requires-python = ">=3.13,<3.14"
-# dependencies = []
-# ///
+# Adapted from Exordio for Insitu; see LICENSE-EXORDIO.
 """Refuse agent configuration collisions before AgentSync creates any links."""
 
 import os
@@ -10,7 +7,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[1]
 CONFIGURATION = ROOT / ".agents"
 
 
@@ -111,7 +108,7 @@ def main() -> int:
         "Merge existing instructions, settings or skills into their .agents sources, "
         "then remove the old targets only after preserving their contents. "
         "Stop tracking native targets in Git before applying managed links. "
-        "See .agents/README.md.",
+        "See CONTRIBUTING.md.",
         file=sys.stderr,
     )
     return 1

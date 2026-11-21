@@ -68,22 +68,21 @@ def test_fixture_commands_do_not_inherit_callers_git_index(project, monkeypatch)
 
 
 @pytest.mark.parametrize(
-    "hook,content,diagnostic",
+    "content,diagnostic",
     [
-        ("text-check", b"trailing space \n", "trailing whitespace"),
-        ("text-check", b"missing newline", "missing final newline"),
-        ("text-check", b"Windows line ending\r\n", "trailing whitespace"),
-        ("text-invariants", b"\xef\xbb\xbfmarked text\n", "byte order marker"),
-        ("text-invariants", b"extra final line\n\n", "extra final blank lines"),
-        ("text-invariants", b"embedded\rcarriage return\n", "carriage return"),
+        (b"trailing space \n", "trailing whitespace"),
+        (b"missing newline", "missing final newline"),
+        (b"Windows line ending\r\n", "trailing whitespace"),
+        (b"\xef\xbb\xbfmarked text\n", "byte order marker"),
+        (b"extra final line\n\n", "extra final blank lines"),
+        (b"embedded\rcarriage return\n", "carriage return"),
     ],
 )
-def test_text_hooks_report_without_repair(project, hook, content, diagnostic):
+def test_text_hooks_report_without_repair(project, content, diagnostic):
     require_tools("bash", "prek", "python3")
     for name in [
         ".pre-commit-config.yaml",
-        "infra/nix/check-text.sh",
-        "scripts/check_text.py",
+        "scripts/format_text.py",
     ]:
         destination = project / name
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +91,7 @@ def test_text_hooks_report_without_repair(project, hook, content, diagnostic):
     source.write_bytes(content)
     env = dict(os.environ, PREK_HOME=str(project.parent / "prek-cache"))
     result = run(
-        ["prek", "run", hook, "--files", "example.txt"],
+        ["prek", "run", "text-check", "--files", "example.txt"],
         project,
         env=env,
         check=False,
@@ -127,7 +126,7 @@ def test_text_formatter_repairs_only_repository_text(project):
 
 
 def test_file_collection_keeps_untracked_and_skips_deleted_files(project):
-    require_tools("bash", "python3")
+    require_tools("bash", "python3", "just")
     if os.name == "nt":
         pytest.skip("the repository gate runner uses Unix executable scripts")
     (project / ".gitignore").write_text("ignored.txt\n")
@@ -153,13 +152,18 @@ def test_file_collection_keeps_untracked_and_skips_deleted_files(project):
         PATH=str(tools) + os.pathsep + os.environ["PATH"],
         CAPTURE=str(capture),
     )
-    run(["bash", str(ROOT / "infra/nix/check.sh")], project, env=env)
+    shutil.copy2(ROOT / "justfile", project / "justfile")
+    (project / ".agents").mkdir()
+    (project / ".agents/justfile").write_text("check:\n    @true\n")
+    run(["just", "check"], project, env=env)
     arguments = json.loads(capture.read_text())
     assert arguments[:2] == ["run", "--files"]
     assert set(arguments[2:]) == {
         ".gitignore",
         "tracked.txt",
         "untracked with spaces.txt",
+        "justfile",
+        ".agents/justfile",
     }
     assert not deleted.exists()
 

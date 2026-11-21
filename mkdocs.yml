@@ -17,7 +17,6 @@ nav:
   - Guides:
       - Compatibility: docs/compatibility.md
       - Distribution: docs/distribution.md
-      - Exordio adoption: docs/exordio-adoption.md
       - Process protocol: docs/protocol.md
       - Python SDK: docs/python-sdk.md
   - Crates:
