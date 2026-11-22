@@ -189,9 +189,13 @@ template = "components.md.j2"
 
 [devenv](https://devenv.sh) pins every tool through `devenv.lock`. Install the
 pinned CLI with `bash nix/install-devenv.sh`, then run `direnv allow` or
-`devenv shell`. Entering the shell syncs the Python SDK's dependencies from
-`uv.lock` and installs the prek Git hooks; `devenv up` then runs `insitu watch`, so
-generated regions follow your edits.
+`devenv shell`, followed by `just setup`. Setup prepares the locked Python and
+Rust dependencies, installs Git hooks and applies collision-checked Codex and
+Claude links from `.agents/`. Shell entry itself performs no setup.
+`devenv up` then runs the current Rust engine's `insitu watch`, so generated
+regions follow your edits.
+
+See [Contributing](CONTRIBUTING.md) for agent setup and the Exordio release pin.
 
 The Markdown gates divide the work: rumdl owns formatting and local links, lychee
 external links (on push), schematter document shape
@@ -200,11 +204,15 @@ codespell spelling, and `insitu check` generated content. Harper is the editor's
 grammar checker through `harper-ls`, with `just prose` as an advisory pass.
 
 ```sh
-just check        # every gate in .pre-commit-config.yaml, as the hooks run them
+just setup        # prepare locked dependencies, Git hooks and native agent links
+just check        # read-only gates over prepared inputs, including generated views
 just test         # nextest and doctests
 just lint         # Clippy, warnings denied
 just parity ~/Git/pricing-perspective   # read-only `check` on a real project
 just fmt          # format Rust, Nix, TOML, Markdown, Python and justfiles
+just sync         # refresh this repository's generated documentation explicitly
+just security     # online dependency advisory, license and source checks
+just links        # online external-link check
 just prose        # advisory Harper grammar pass over tracked Markdown
 just site         # build the documentation site into site/
 ```

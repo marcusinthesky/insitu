@@ -15,6 +15,8 @@ directories_only = true
 
 ```text
 insitu/
+├── .agents/
+│   └── skills/
 ├── .github/
 │   └── workflows/
 ├── assets/
@@ -171,13 +173,18 @@ the same pipeline as a dry run. Details are in [distribution](docs/distribution.
 
 ## 8. Development and testing
 
-[devenv](https://devenv.sh) pins every tool; `direnv allow` enters the shell and
-installs the Git hooks, and `devenv up` runs `insitu watch`. `just check` runs every
-gate: rustfmt, Clippy, nextest and doctests, rustdoc, cargo-deny and cargo-machete,
+[devenv](https://devenv.sh) pins tools; `direnv allow` enters the shell, and explicit
+`just setup` prepares locked dependencies, Git hooks and native agent links.
+`devenv up` runs the current workspace's `insitu watch`. `just check` runs the
+prepared, read-only gates: rustfmt, Clippy, nextest and doctests, rustdoc and cargo-machete,
 Ruff and pytest for the Python SDK, Node tests for the npm launcher, rumdl,
 schematter, codespell, lychee on push, and `insitu check` for this repository's own
-generated regions. CI runs the gates, the minimum supported Rust version on Linux,
+generated regions. `just security` runs cargo-deny online and is a separate CI
+step. Formatting and region updates use `just fmt` and `just sync` explicitly.
+CI runs the gates, the minimum supported Rust version on Linux,
 macOS and Windows, and the Nix build. See [CONTRIBUTING](CONTRIBUTING.md).
+
+See [Contributing](CONTRIBUTING.md) for the Exordio tooling used by this repository.
 
 ## 9. Future considerations
 

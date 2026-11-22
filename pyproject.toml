@@ -39,7 +39,7 @@ python-source = "python"
 module-name = "insitu"
 python-packages = ["insitu"]
 strip = true
-include = ["LICENSE", "docs/**", "tests/fixtures/**", "rust-toolchain.toml"]
+include = ["LICENSE", { path = "LICENSE-EXORDIO", format = "sdist" }, "docs/**", "tests/fixtures/**", "rust-toolchain.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

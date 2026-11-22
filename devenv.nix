@@ -29,6 +29,8 @@
     gh
     just
     prek
+    actionlint
+    shellcheck
     convco
     jq
     nixfmt
@@ -42,18 +44,28 @@
     lychee
     harper
     (callPackage ./nix/schematter.nix { })
+    # AgentSync also ships native macOS builds. Keep the template's package
+    # definition intact while supporting Insitu's existing Darwin environment.
+    ((callPackage ./nix/agentsync.nix { }).overrideAttrs (old: {
+      meta = old.meta // {
+        platforms = old.meta.platforms ++ [
+          "x86_64-darwin"
+          "aarch64-darwin"
+        ];
+      };
+    }))
   ];
   env = {
     # uv must use this shell's Python, never a downloaded interpreter.
     UV_PYTHON_DOWNLOADS = "never";
+    UV_PYTHON = "${pkgs.python313}/bin/python3";
   };
   enterShell = ''
-    uv sync --frozen
+    unset PYTHONPATH PYTHONHOME VIRTUAL_ENV
     export PATH="$PWD/.venv/bin:$PATH"
-    if git rev-parse --git-dir >/dev/null 2>&1; then prek install; fi
   '';
   # `devenv up` keeps every Insitu view current while you edit.
-  processes.insitu.exec = "cargo run --quiet --locked -p insitu -- watch";
+  processes.insitu.exec = "cargo run --quiet --frozen -p insitu -- watch";
   enterTest = ''
     just check
   '';

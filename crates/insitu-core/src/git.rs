@@ -177,9 +177,7 @@ impl Git {
                 continue;
             }
             previous = current;
-            let committed_at = chrono::DateTime::from_timestamp(commit.time().seconds(), 0)
-                .context("Git commit timestamp out of range")?
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+            let committed_at = format_commit_timestamp(commit.time().seconds())?;
             result.push(json!({
                 "oid": commit.id().to_string(),
                 "summary": commit.message().unwrap_or("").lines().next().unwrap_or(""),
@@ -263,5 +261,70 @@ impl Git {
             None if name == "ignore-rules" => self.ignore_rules(),
             _ => bail!("unsupported Git resource: {resource}"),
         }
+    }
+}
+
+fn format_commit_timestamp(seconds: i64) -> Result<String> {
+    let timestamp = time::OffsetDateTime::from_unix_timestamp(seconds)
+        .ok()
+        // Preserve chrono's original range while replacing the formatter.
+        .filter(|value| (-262_143..=262_142).contains(&value.year()))
+        .context("Git commit timestamp out of range")?;
+    timestamp
+        .format(time::macros::format_description!(
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]"
+        ))
+        .context("format Git commit timestamp")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::{Signature, Time};
+
+    #[test]
+    fn history_preserves_second_precision_and_utc_offset() -> Result<()> {
+        for (seconds, offset, expected) in [
+            (0, 120, "1970-01-01T00:00:00+00:00"),
+            (1, -300, "1970-01-01T00:00:01+00:00"),
+            (951_782_400, 0, "2000-02-29T00:00:00+00:00"),
+        ] {
+            let directory = tempfile::tempdir()?;
+            let root = directory.path().canonicalize()?;
+            let repository = Repository::init(&root)?;
+            std::fs::write(root.join("note.md"), "# Note\n")?;
+            let mut index = repository.index()?;
+            index.add_path(Path::new("note.md"))?;
+            let tree = repository.find_tree(index.write_tree()?)?;
+            let signature = Signature::new(
+                "Contributor",
+                "test@example.com",
+                &Time::new(seconds, offset),
+            )?;
+            repository.commit(Some("HEAD"), &signature, &signature, "Add note", &tree, &[])?;
+
+            let history = Git::open(&root).resource("git://history/note.md")?;
+            assert_eq!(history[0]["committed_at"], expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn commit_timestamp_preserves_extended_dates_and_range_errors() -> Result<()> {
+        for (seconds, expected) in [
+            (-1, "1969-12-31T23:59:59+00:00"),
+            (253_402_300_800, "+10000-01-01T00:00:00+00:00"),
+            (-8_334_601_228_800, "-262143-01-01T00:00:00+00:00"),
+            (8_210_266_876_799, "+262142-12-31T23:59:59+00:00"),
+        ] {
+            assert_eq!(format_commit_timestamp(seconds)?, expected);
+        }
+        for seconds in [i64::MIN, i64::MAX, -8_334_601_228_801, 8_210_266_876_800] {
+            assert_eq!(
+                format_commit_timestamp(seconds).unwrap_err().to_string(),
+                "Git commit timestamp out of range"
+            );
+        }
+        Ok(())
     }
 }

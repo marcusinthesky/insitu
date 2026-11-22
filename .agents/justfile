@@ -1,0 +1,11 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# Inspect every destination before the native CLI changes any links.
+apply:
+    cd .. && env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV python3 scripts/agent_preflight.py
+    cd .. && agentsync apply
+
+check:
+    cd .. && agentsync status
+    cd .. && agentsync apply --dry-run
+    cd .. && agentsync doctor

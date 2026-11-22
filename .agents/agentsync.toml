@@ -1,0 +1,21 @@
+source_dir = "."
+default_agents = ["codex", "claude"]
+
+[gitignore]
+enabled = false
+
+[agents.codex]
+enabled = true
+
+[agents.codex.targets.instructions]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"

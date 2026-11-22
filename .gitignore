@@ -17,3 +17,9 @@ node_modules/
 /.benchmarks/
 /.cache/
 /site/
+
+# Native agent projections are created explicitly from canonical .agents sources.
+/AGENTS.md
+/CLAUDE.md
+/.codex/
+/.claude/

@@ -80,7 +80,8 @@ impl Index {
         transaction.execute("delete from entries", [])?;
         for (relative, kind) in entries {
             let (parent, name) = split_path(&relative);
-            let depth = relative.split('/').count();
+            let depth = i64::try_from(relative.split('/').count())
+                .context("path depth overflows SQLite integer")?;
             transaction.execute(
                 "insert into entries(path,parent,name,kind,depth) values(?,?,?,?,?)",
                 params![relative, parent, name, kind, depth],
@@ -138,7 +139,7 @@ impl Index {
         Ok(Scan { entries, documents })
     }
 
-    pub(crate) fn query(&self, sql: &str, bindings: &Map<String, Value>) -> Result<Vec<Value>> {
+    pub(crate) fn query(&mut self, sql: &str, bindings: &Map<String, Value>) -> Result<Vec<Value>> {
         let mut prefix = sql.trim_start();
         while prefix.starts_with("--") {
             prefix = prefix
@@ -151,10 +152,13 @@ impl Index {
             lower.starts_with("select") || lower.starts_with("with"),
             "SQL models must be a SELECT or WITH query"
         );
-        self.connection.authorizer(Some(authorize));
+        self.connection
+            .authorizer(Some(authorize))
+            .context("enable SQL model authorizer")?;
         let result = self.query_authorized(sql, bindings);
         self.connection
-            .authorizer(None::<fn(AuthContext<'_>) -> Authorization>);
+            .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+            .context("disable SQL model authorizer")?;
         result
     }
 
@@ -186,11 +190,7 @@ impl Index {
             };
             statement.raw_bind_parameter(index, value)?;
         }
-        let columns: Vec<String> = statement
-            .column_names()
-            .iter()
-            .map(|s| (*s).into())
-            .collect();
+        let columns: Vec<String> = statement.column_names().map(str::to_owned).collect();
         let mut cursor = statement.raw_query();
         let mut rows = Vec::new();
         while let Some(row) = cursor.next()? {
@@ -254,6 +254,7 @@ fn insert_document(
     } else {
         parent.split('/').count()
     };
+    let depth = i64::try_from(depth).context("path depth overflows SQLite integer")?;
     let title = document
         .frontmatter
         .get("title")
@@ -262,6 +263,7 @@ fn insert_document(
     let metadata = fs::metadata(root.join(relative))?;
     let mtime = i64::try_from(metadata.modified()?.duration_since(UNIX_EPOCH)?.as_nanos())
         .context("mtime overflows SQLite integer")?;
+    let size = i64::try_from(metadata.len()).context("file size overflows SQLite integer")?;
     transaction.execute(
         INSERT_DOCUMENT,
         params![
@@ -275,7 +277,7 @@ fn insert_document(
             frontmatter,
             hash,
             mtime,
-            metadata.len()
+            size
         ],
     )?;
     Ok(())
@@ -330,6 +332,10 @@ mod tests {
                 .query("select load_extension('anything')", &Map::new())
                 .is_err()
         );
+        // A rejected model must release the authorizer before the next index write.
+        index
+            .refresh(&Policy::new(temp.path(), &config).unwrap())
+            .unwrap();
         assert_eq!(
             index
                 .query("select count(*) as n from documents", &Map::new())
